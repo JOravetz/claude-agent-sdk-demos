@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "concurrently \"npm:dev:server\" \"npm:dev:client\"",
     "dev:server": "tsx watch server.ts",
-    "dev:client": "vite --port 5173"
+    "dev:client": "vite --port 5173",
+    "test": "node --import tsx --test \"*.test.ts\"",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.69",
