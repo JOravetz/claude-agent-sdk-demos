@@ -7,6 +7,7 @@ import { END, MessageQueue } from "./queue.js";
 import { PickStore, type Pick } from "./picks.js";
 import { writeIfChanged } from "./snapshot.js";
 import { getScenario, type Scenario } from "./scenarios/index.js";
+import { formatTape, tapeSample } from "./fixtures/tape.js";
 
 export type Phase = "gather" | "design";
 
@@ -139,9 +140,22 @@ export class Session {
   toDesign(): void {
     this.phase = "design";
     this.send({ type: "phase", phase: "design" });
+
+    // The market may be closed and the demo never runs bb-tpm-rank, so supply
+    // rows rather than letting the model invent them. Seeded from the session
+    // id: different sessions get different tapes, each one reproducible.
+    const seed = [...this.id].reduce((acc, c) => (acc * 31 + c.charCodeAt(0)) | 0, 7);
+    const rows = formatTape(tapeSample(14, seed));
+
     this.say(
       "Stop gathering. Continue to Design: first give me the final invocation " +
-        "and the per-flag rationale, then the phase 2 HTML dashboard document.",
+        "and the per-flag rationale, then the phase 2 HTML dashboard document.\n\n" +
+        "Render the dashboard against exactly these rows. They are SIMULATED - " +
+        "synthetic symbols, not a recorded session - and the dashboard must say " +
+        "so visibly. Do not add, rename, or re-price any row.\n\n" +
+        "```\n" +
+        rows +
+        "\n```",
     );
   }
 

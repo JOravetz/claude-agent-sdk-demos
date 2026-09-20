@@ -8,6 +8,7 @@
     "dev:server": "tsx watch server.ts",
     "dev:client": "vite --port 5173",
     "test": "node --import tsx --test \"*.test.ts\"",
+    "smoke": "node scripts/smoke.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
