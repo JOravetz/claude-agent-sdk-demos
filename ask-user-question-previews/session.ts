@@ -29,6 +29,19 @@ type AskedQuestion = {
 
 const SESSION_DIR = ".sessions";
 
+/**
+ * Session ids reach us from the browser and end up in a file path, for both
+ * reads and writes. Anything but a literal UUID is refused: a crafted id such
+ * as "../../../.bashrc" would otherwise let a client choose where snapshot()
+ * writes. Validated in the constructor so every path that sets `this.id` --
+ * including rehydrate() -- is covered.
+ */
+const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isValidSessionId(id: string): boolean {
+  return SESSION_ID.test(id);
+}
+
 /** Pull one fenced ```html block out of a markdown text block. */
 export function extractHtmlBlock(text: string): string | null {
   const match = text.match(/```html\s*\n([\s\S]*?)```/);
@@ -54,6 +67,10 @@ export class Session {
     private readonly send: (payload: Outbound) => void,
     id?: string,
   ) {
+    if (id !== undefined && !isValidSessionId(id)) {
+      console.warn(`[session] refusing malformed session id; issuing a fresh one`);
+      id = undefined;
+    }
     this.id = id ?? randomUUID();
     this.scenario = getScenario(scenarioId);
   }
@@ -65,8 +82,10 @@ export class Session {
     send: (payload: Outbound) => void,
   ): Promise<Session> {
     const session = new Session(scenarioId, send, id);
+    // Read by the VALIDATED id the constructor settled on, never the raw
+    // argument: a rejected id gets a fresh UUID with no snapshot to load.
     try {
-      const raw = await readFile(join(SESSION_DIR, `${id}.json`), "utf8");
+      const raw = await readFile(join(SESSION_DIR, `${session.id}.json`), "utf8");
       session.picks = PickStore.fromJSON(raw);
     } catch {
       // No snapshot: a fresh session under a known id.
