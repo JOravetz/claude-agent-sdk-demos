@@ -1,0 +1,475 @@
+# ask-user-question-previews: AskUserQuestion HTML preview demo
+# just 1.46.0+ required
+#
+# Two ways to type everything:
+#   NAMES    every recipe has a long name and a short alias -- `just agent` == `just a`
+#   FLAGS    recipes that take arguments accept long and short forms:
+#              just agent --scenario branding --verbose
+#              just agent -s branding -v
+#
+# `just` alone prints the summary. `just guide` prints the manual with worked
+# examples. Every argument-taking recipe also answers `-h` / `--help`.
+
+set shell := ["bash", "-c", "-u"]
+
+project_dir := justfile_directory()
+server_port := "3001"
+client_port := "5173"
+dev_log     := project_dir / ".dev.log"
+
+# The SDK spawns the Claude CLI, which refuses to start inside another Claude
+# Code session ("Claude Code cannot be launched inside another Claude Code
+# session"). Everything that reaches the CLI goes through this.
+NOCC := "env -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# HELP
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Summary of every recipe (default)
+help:
+    @printf '\n\033[1mask-user-question-previews\033[0m — AskUserQuestion HTML preview demo\n\n'
+    @printf '  \033[1mSTART\033[0m\n'
+    @printf '    install       i    Install npm dependencies\n'
+    @printf '    dev           d    Start server + client in the foreground\n'
+    @printf '    up            u    Start both detached, logging to .dev.log\n'
+    @printf '    down          x    Stop the stack and any stray CLI children\n'
+    @printf '    logs          l    Tail .dev.log\n\n'
+    @printf '  \033[1mRUN THE AGENT\033[0m\n'
+    @printf '    agent         a    Start the stack, then drive a scenario end to end\n'
+    @printf '                         -s --scenario  tpm-rank (default) | branding\n'
+    @printf '                         -n --no-start  require a running server, do not start one\n'
+    @printf '                         -k --keep      leave the stack up afterwards (default)\n'
+    @printf '                         -x --stop      tear the stack down afterwards\n'
+    @printf '                         -t --timeout   seconds to wait for the run (default 600)\n'
+    @printf '                         -v --verbose   trace the shell\n'
+    @printf '    smoke         k    Drive an ALREADY-RUNNING server   [-s -v]\n'
+    @printf '    open          o    Print the client URL\n\n'
+    @printf '  \033[1mCHECK\033[0m\n'
+    @printf '    test          t    Unit tests (node:test, no network)\n'
+    @printf '    typecheck     tc   tsc --noEmit\n'
+    @printf '    check         ck   test + typecheck\n'
+    @printf '    doctor        dr   Diagnose env, auth, ports, strays\n\n'
+    @printf '  \033[1mINSPECT\033[0m\n'
+    @printf '    tape          tp   Print the simulated tpm-rank tape  [-n --ticks] [-S --seed]\n'
+    @printf '    sessions      se   List stored session snapshots\n'
+    @printf '    ps            p    Show running demo processes\n\n'
+    @printf '  \033[1mCLEAN\033[0m\n'
+    @printf '    clean         cl   Remove .sessions and .dev.log\n'
+    @printf '    distclean          Also remove node_modules\n\n'
+    @printf '  \033[1mjust guide\033[0m (g) — manual with worked examples.\n\n'
+
+alias h := help
+
+# Long-form manual with worked examples
+guide:
+    @if command -v less >/dev/null 2>&1 && [ -t 1 ]; then \
+        less -R "{{ project_dir }}/docs/JUSTFILE.md"; \
+    else \
+        cat "{{ project_dir }}/docs/JUSTFILE.md"; \
+    fi
+
+alias g := guide
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# START
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Install npm dependencies
+install:
+    cd "{{ project_dir }}" && npm install
+
+alias i := install
+
+# Start server + client in the foreground (Ctrl-C to stop)
+dev: _deps
+    cd "{{ project_dir }}" && {{ NOCC }} npm run dev
+
+alias d := dev
+
+# Start server + client detached, logging to .dev.log
+up: _deps
+    #!/usr/bin/env bash
+    set -uo pipefail
+    cd "{{ project_dir }}"
+    if ss -ltn 2>/dev/null | grep -q ":{{ server_port }} "; then
+        echo "already up on :{{ server_port }}"
+        exit 0
+    fi
+    : > "{{ dev_log }}"
+    nohup {{ NOCC }} npm run dev >> "{{ dev_log }}" 2>&1 &
+    disown || true
+    echo "starting..."
+    for _ in $(seq 1 60); do
+        if ss -ltn 2>/dev/null | grep -q ":{{ server_port }} "; then
+            echo "server  http://localhost:{{ server_port }}"
+            echo "client  http://localhost:{{ client_port }}"
+            exit 0
+        fi
+        sleep 0.5
+    done
+    echo "server did not come up within 30s; see {{ dev_log }}" >&2
+    tail -20 "{{ dev_log }}" >&2
+    exit 1
+
+alias u := up
+
+# Stop the stack and any stray Claude CLI children
+down:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    # Kill the CLI children FIRST: they are what outlive a careless shutdown.
+    srv=$(ss -ltnp 2>/dev/null | grep ":{{ server_port }} " | grep -oP 'pid=\K[0-9]+' | head -1 || true)
+    if [[ -n "${srv}" ]]; then
+        kids=$(ps --ppid "${srv}" -o pid=,comm= 2>/dev/null | awk '$2=="claude"{print $1}' || true)
+        for k in ${kids}; do kill "${k}" 2>/dev/null && echo "killed CLI ${k}"; done
+    fi
+    pkill -f "concurrently npm:dev:server"   2>/dev/null && echo "stopped concurrently" || true
+    pkill -f "tsx watch server.ts"           2>/dev/null && echo "stopped server"       || true
+    pkill -f "vite --port {{ client_port }}" 2>/dev/null && echo "stopped client"       || true
+    sleep 1
+    if ss -ltn 2>/dev/null | grep -q ":{{ server_port }} "; then
+        echo ":{{ server_port }} still held" >&2
+    else
+        echo "down"
+    fi
+
+alias x := down
+
+# Tail the detached dev log
+logs:
+    @tail -f "{{ dev_log }}"
+
+alias l := logs
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# RUN THE AGENT
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Start the stack if needed, then drive a scenario end to end
+agent *ARGS:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    set -- {{ ARGS }}
+
+    scenario="tpm-rank"; start=1; stop_after=0; timeout=600; verbose=0
+
+    usage() {
+        cat <<'EOF'
+    just agent [options]
+
+      Brings the stack up (unless -n), then drives one scenario from the first
+      question through the phase gate to a rendered dashboard.
+
+      -s, --scenario NAME   tpm-rank (default) | branding
+      -n, --no-start        require an already-running server; do not start one
+      -k, --keep            leave the stack running afterwards (default)
+      -x, --stop            tear the stack down afterwards
+      -t, --timeout SECS    give up after SECS (default 600)
+      -v, --verbose         trace the shell
+      -h, --help            this text
+
+    EXAMPLES
+      just agent                          # tpm-rank, start the stack, leave it up
+      just agent -s branding              # the original branding demo
+      just agent --scenario branding      # same, long form
+      just a -s tpm-rank -v               # short alias, traced
+      just agent -n                       # drive a server that is already up
+      just agent -s branding -x           # run it, then shut everything down
+      just agent -t 900                   # allow 15 minutes
+    EOF
+    }
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -s|--scenario) scenario="${2:-}"; shift 2 ;;
+            -n|--no-start) start=0; shift ;;
+            -k|--keep)     stop_after=0; shift ;;
+            -x|--stop)     stop_after=1; shift ;;
+            -t|--timeout)  timeout="${2:-}"; shift 2 ;;
+            -v|--verbose)  verbose=1; shift ;;
+            -h|--help)     usage; exit 0 ;;
+            --)            shift; break ;;
+            *) echo "unknown option: $1" >&2; echo >&2; usage >&2; exit 2 ;;
+        esac
+    done
+
+    case "${scenario}" in
+        tpm-rank|branding) ;;
+        *) echo "unknown scenario '${scenario}' — expected 'tpm-rank' or 'branding'" >&2; exit 2 ;;
+    esac
+    [[ "${timeout}" =~ ^[0-9]+$ ]] || { echo "--timeout wants an integer, got '${timeout}'" >&2; exit 2; }
+    (( verbose )) && set -x
+
+    cd "{{ project_dir }}"
+    if (( start )); then
+        just up || exit 1
+    elif ! ss -ltn 2>/dev/null | grep -q ":{{ server_port }} "; then
+        echo "nothing listening on :{{ server_port }} — drop -n, or run 'just up'" >&2
+        exit 1
+    fi
+
+    echo "driving scenario: ${scenario} (timeout ${timeout}s)"
+    rc=0
+    timeout "${timeout}" {{ NOCC }} node scripts/smoke.mjs "${scenario}" || rc=$?
+    if (( rc == 124 )); then
+        echo "timed out after ${timeout}s — the agent was still working" >&2
+    fi
+    (( stop_after )) && just down
+    exit "${rc}"
+
+alias a := agent
+
+# Drive an already-running server (no startup, no teardown)
+smoke *ARGS:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    set -- {{ ARGS }}
+
+    scenario="tpm-rank"; verbose=0
+
+    usage() {
+        cat <<'EOF'
+    just smoke [options]
+
+      Drives a server that is already running. Does not start or stop anything.
+
+      -s, --scenario NAME   tpm-rank (default) | branding
+      -v, --verbose         trace the shell
+      -h, --help            this text
+
+    EXAMPLES
+      just smoke                     # tpm-rank against the running stack
+      just smoke -s branding         # regression-check the original demo
+      just k --scenario branding     # short alias, long flag
+    EOF
+    }
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -s|--scenario) scenario="${2:-}"; shift 2 ;;
+            -v|--verbose)  verbose=1; shift ;;
+            -h|--help)     usage; exit 0 ;;
+            *) echo "unknown option: $1" >&2; echo >&2; usage >&2; exit 2 ;;
+        esac
+    done
+
+    case "${scenario}" in
+        tpm-rank|branding) ;;
+        *) echo "unknown scenario '${scenario}' — expected 'tpm-rank' or 'branding'" >&2; exit 2 ;;
+    esac
+    (( verbose )) && set -x
+
+    if ! ss -ltn 2>/dev/null | grep -q ":{{ server_port }} "; then
+        echo "nothing listening on :{{ server_port }} — run 'just up' first" >&2
+        exit 1
+    fi
+    cd "{{ project_dir }}" && {{ NOCC }} node scripts/smoke.mjs "${scenario}"
+
+alias k := smoke
+
+# Print the client URL
+open:
+    @echo "http://localhost:{{ client_port }}"
+
+alias o := open
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CHECK
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Unit tests (node:test — no network, no CLI)
+test: _deps
+    cd "{{ project_dir }}" && npm test
+
+alias t := test
+
+# Type check without emitting
+typecheck: _deps
+    cd "{{ project_dir }}" && npm run typecheck
+
+alias tc := typecheck
+
+# test + typecheck
+check: test typecheck
+    @echo "check: clean"
+
+alias ck := check
+
+# Diagnose environment, auth, ports, and stray processes
+doctor:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    cd "{{ project_dir }}"
+    ok()   { printf '  \033[32m ok \033[0m %s\n' "$1"; }
+    warn() { printf '  \033[33mwarn\033[0m %s\n' "$1"; }
+    bad()  { printf '  \033[31mfail\033[0m %s\n' "$1"; }
+
+    echo
+    echo "node"
+    v=$(node --version 2>/dev/null || echo none)
+    major=${v#v}; major=${major%%.*}
+    if [[ "${v}" == none ]]; then bad "node not found"
+    elif (( major >= 18 )); then ok "${v}"
+    else bad "${v} — need 18+"; fi
+
+    echo "dependencies"
+    if [[ -d node_modules ]]; then ok "node_modules present"
+    else bad "node_modules missing — run 'just install'"; fi
+
+    echo "auth"
+    if [[ "${ANTHROPIC_AUTH:-}" == "api-key" ]]; then
+        if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then ok "ANTHROPIC_AUTH=api-key, key set"
+        else bad "ANTHROPIC_AUTH=api-key but ANTHROPIC_API_KEY is empty"; fi
+    else
+        key=$(grep -E '^[[:space:]]*ANTHROPIC_API_KEY=' .env 2>/dev/null | head -1 | cut -d= -f2- || true)
+        if [[ "${key}" == *"sk-ant-..."* ]]; then
+            bad ".env holds the literal placeholder — it shadows your login and 401s"
+        elif [[ -n "${key}" ]]; then
+            warn ".env sets ANTHROPIC_API_KEY; the server drops it in favour of the CLI login"
+        else
+            ok "no API key set — using the Claude CLI login"
+        fi
+        if [[ -f "${HOME}/.claude/.credentials.json" ]]; then ok "claude login credentials found"
+        else bad "no ~/.claude/.credentials.json — run 'claude login'"; fi
+    fi
+
+    echo "nesting"
+    if [[ -n "${CLAUDECODE:-}" ]]; then
+        warn "CLAUDECODE is set — recipes strip it, but a bare 'npm run dev' will fail"
+    else
+        ok "not inside a Claude Code session"
+    fi
+
+    echo "ports"
+    for p in {{ server_port }} {{ client_port }}; do
+        if ss -ltn 2>/dev/null | grep -q ":${p} "; then warn ":${p} in use (stack already up?)"
+        else ok ":${p} free"; fi
+    done
+
+    echo "strays"
+    srv=$(ss -ltnp 2>/dev/null | grep ":{{ server_port }} " | grep -oP 'pid=\K[0-9]+' | head -1 || true)
+    if [[ -n "${srv}" ]]; then
+        n=$(ps --ppid "${srv}" -o comm= 2>/dev/null | grep -cx claude || true)
+        if (( n > 1 )); then warn "${n} claude CLI children — one per open tab is normal, more is a leak"
+        else ok "${n:-0} claude CLI child"; fi
+    else
+        ok "server not running"
+    fi
+    echo
+
+alias dr := doctor
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# INSPECT
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Print the deterministic simulated tpm-rank tape
+tape *ARGS: _deps
+    #!/usr/bin/env bash
+    set -uo pipefail
+    set -- {{ ARGS }}
+
+    ticks=14; seed=7
+
+    usage() {
+        cat <<'EOF'
+    just tape [options]
+
+      Prints the simulated tape the design phase renders against. Deterministic:
+      the same --ticks and --seed always produce the same rows.
+
+      -n, --ticks N    buckets to advance (default 14)
+      -S, --seed  N    generator seed (default 7)
+      -h, --help       this text
+
+    EXAMPLES
+      just tape                    # 14 ticks, seed 7
+      just tape -n 40              # later in the session, more ignitions
+      just tape --ticks 5 --seed 3
+      just tp -n 30 -S 11          # short alias, short flags
+    EOF
+    }
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -n|--ticks) ticks="${2:-}"; shift 2 ;;
+            -S|--seed)  seed="${2:-}";  shift 2 ;;
+            -h|--help)  usage; exit 0 ;;
+            *) echo "unknown option: $1" >&2; echo >&2; usage >&2; exit 2 ;;
+        esac
+    done
+
+    [[ "${ticks}" =~ ^[0-9]+$ ]] || { echo "--ticks wants an integer, got '${ticks}'" >&2; exit 2; }
+    [[ "${seed}"  =~ ^[0-9]+$ ]] || { echo "--seed wants an integer, got '${seed}'"  >&2; exit 2; }
+
+    cd "{{ project_dir }}"
+    node --import tsx -e "import('./fixtures/tape.ts').then(m => console.log(m.formatTape(m.tapeSample(${ticks}, ${seed}))))"
+
+alias tp := tape
+
+# List stored session snapshots
+sessions:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    cd "{{ project_dir }}"
+    if [[ ! -d .sessions ]] || [[ -z "$(ls -A .sessions 2>/dev/null)" ]]; then
+        echo "no stored sessions"
+        exit 0
+    fi
+    printf '%-38s %6s  %s\n' "SESSION" "PICKS" "MODIFIED"
+    for f in .sessions/*.json; do
+        n=$(node -e "try{console.log(JSON.parse(require('fs').readFileSync('$f','utf8')).picks.filter(p=>!p.supersededBy).length)}catch{console.log('?')}")
+        printf '%-38s %6s  %s\n' "$(basename "$f" .json)" "${n}" "$(date -r "$f" '+%Y-%m-%d %H:%M')"
+    done
+
+alias se := sessions
+
+# Show running demo processes
+ps:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    found=0
+    while read -r line; do
+        [[ -z "${line}" ]] && continue
+        echo "  ${line}"
+        found=1
+    done < <(command ps -eo pid,etime,cmd --no-headers 2>/dev/null \
+             | grep -E "tsx watch server\.ts|vite --port {{ client_port }}|concurrently npm:dev" \
+             | grep -v grep | cut -c1-120)
+    srv=$(ss -ltnp 2>/dev/null | grep ":{{ server_port }} " | grep -oP 'pid=\K[0-9]+' | head -1 || true)
+    if [[ -n "${srv}" ]]; then
+        while read -r k; do
+            [[ -z "${k}" ]] && continue
+            echo "  ${k}  (claude CLI child)"
+            found=1
+        done < <(command ps --ppid "${srv}" -o pid=,etime=,comm= 2>/dev/null | awk '$3=="claude"{print $1"  "$2}')
+    fi
+    (( found )) || echo "  nothing running"
+
+alias p := ps
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CLEAN
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Remove session snapshots and the dev log
+clean:
+    rm -rf "{{ project_dir }}/.sessions" "{{ dev_log }}"
+    @echo "removed .sessions and .dev.log"
+
+alias cl := clean
+
+# Also remove node_modules
+distclean: clean
+    rm -rf "{{ project_dir }}/node_modules"
+    @echo "removed node_modules"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# INTERNAL
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Fail early with a useful message rather than a stack trace from npm.
+[private]
+_deps:
+    @test -d "{{ project_dir }}/node_modules" || { echo "node_modules missing — run 'just install'" >&2; exit 1; }
