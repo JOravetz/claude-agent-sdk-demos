@@ -9,3 +9,4 @@ dist
 
 # superpowers brainstorming mockups/state
 .superpowers/
+.sessions/
