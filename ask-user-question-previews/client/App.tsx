@@ -3,6 +3,8 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+import { DesignPane } from "./DesignPane";
+import { PicksPanel } from "./PicksPanel";
 import {
   type LogEntry,
   type Question,
@@ -10,8 +12,13 @@ import {
 } from "./useAgentSocket";
 
 export function App() {
-  const { log, pending, status, busy, connected, submit, answer } =
-    useAgentSocket("ws://localhost:3001/ws");
+  const {
+    log, pending, picks, history, phase, design,
+    status, busy, connected,
+    submit, answer, amend, say, askMore, toDesign,
+  } = useAgentSocket("ws://localhost:3001/ws");
+
+  const [scenario, setScenario] = useState("branding");
 
   const [prompt, setPrompt] = useState(
     "Help me brand a new SaaS product. Walk me through the key decisions (colors, typography, vibe) and show me visual options for each.",
@@ -52,11 +59,31 @@ export function App() {
           <p style={{ color: "#999" }}>Responses appear here.</p>
         )}
         <LogView log={log} />
+
+        <PicksPanel
+          picks={picks}
+          history={history}
+          busy={busy}
+          onAmend={amend}
+          onAskMore={askMore}
+          onToDesign={toDesign}
+          onSay={say}
+        />
       </aside>
 
       {/* Center: prompt, status, and either the current question or the final result. */}
       <section style={{ padding: 24, overflowY: "auto" }}>
         <h1 style={{ marginTop: 0 }}>AskUserQuestion previews</h1>
+
+        <select
+          value={scenario}
+          onChange={(e) => setScenario(e.target.value)}
+          disabled={busy}
+          style={{ display: "block", marginBottom: 8, fontSize: 13, padding: 4 }}
+        >
+          <option value="branding">Brand a SaaS product</option>
+          <option value="tpm-rank">Tune bb-tpm-rank ignition parameters</option>
+        </select>
 
         <textarea
           value={prompt}
@@ -65,7 +92,7 @@ export function App() {
           style={{ width: "100%", fontFamily: "inherit", fontSize: 14 }}
         />
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 8 }}>
-          <button onClick={() => submit(prompt)} disabled={busy || !connected}>
+          <button onClick={() => submit(prompt, scenario)} disabled={busy || !connected}>
             {busy ? "Running..." : "Run"}
           </button>
           {!connected && (
@@ -85,6 +112,8 @@ export function App() {
             <LogView log={log} />
           </div>
         ) : null}
+
+        {design && phase === "design" && <DesignPane html={design} />}
       </section>
     </main>
   );
