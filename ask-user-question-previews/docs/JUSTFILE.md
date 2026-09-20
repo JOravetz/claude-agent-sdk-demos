@@ -1,21 +1,12 @@
 # justfile manual
 
-Everything here is reachable two ways.
-
-**Names** — every recipe has a long name and a short alias:
-
-```bash
-just agent        # long
-just a            # short
-```
-
-**Flags** — recipes that take arguments accept long and short forms, and the
-two are interchangeable:
+Recipes have one name each. Recipes that take arguments own their argument
+list and accept a long and a short form of every flag; the two are
+interchangeable:
 
 ```bash
 just agent --scenario branding --verbose
 just agent -s branding -v
-just a -s branding -v
 ```
 
 Every argument-taking recipe answers `-h` / `--help` with its own usage and
@@ -34,7 +25,7 @@ browser when you want to make the choices yourself.
 just agent                       # tpm-rank, start the stack, leave it running
 just agent -s branding           # the original branding demo
 just agent --scenario branding   # identical, long form
-just a -s tpm-rank -v            # short alias, shell traced
+just agent -s tpm-rank -v        # short flags, shell traced
 just agent -n                    # drive a server that is ALREADY up
 just agent -s branding -x        # run it, then tear the stack down
 just agent -t 900                # allow 15 minutes instead of 10
@@ -112,7 +103,7 @@ phase 2 draws. Same `--ticks` and `--seed` always give the same rows.
 just tape                     # 14 ticks, seed 7
 just tape -n 40               # later in the session — more ignitions
 just tape --ticks 5 --seed 3  # long form
-just tp -n 30 -S 11           # short alias, short flags
+just tape -n 30 -S 11         # short flags
 ```
 
 ```
