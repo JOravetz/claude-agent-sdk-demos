@@ -11,6 +11,21 @@ import {
   useAgentSocket,
 } from "./useAgentSocket";
 
+/**
+ * Opening prompt per scenario. Mirrors `defaultPrompt` in scenarios/*.ts — the
+ * client cannot import from the server tree under this Vite root, so the two
+ * are kept in sync by hand, as with the Pick type.
+ */
+const DEFAULT_PROMPTS: Record<string, string> = {
+  branding:
+    "Help me brand a new SaaS product. Walk me through the key decisions " +
+    "(colors, typography, vibe) and show me visual options for each.",
+  "tpm-rank":
+    "Help me choose ignition parameters for bb-tpm-rank. Walk me through the " +
+    "decisions that change what the table shows, and show me what each choice " +
+    "costs and buys.",
+};
+
 export function App() {
   const {
     log, pending, picks, history, phase, design,
@@ -20,9 +35,7 @@ export function App() {
 
   const [scenario, setScenario] = useState("branding");
 
-  const [prompt, setPrompt] = useState(
-    "Help me brand a new SaaS product. Walk me through the key decisions (colors, typography, vibe) and show me visual options for each.",
-  );
+  const [prompt, setPrompt] = useState(DEFAULT_PROMPTS.branding);
 
   // Auto-scroll the sidebar as log entries arrive.
   const logRef = useRef<HTMLDivElement | null>(null);
@@ -77,7 +90,14 @@ export function App() {
 
         <select
           value={scenario}
-          onChange={(e) => setScenario(e.target.value)}
+          onChange={(e) => {
+            const next = e.target.value;
+            setScenario(next);
+            // Only overwrite a prompt the user has not customised.
+            if (Object.values(DEFAULT_PROMPTS).includes(prompt)) {
+              setPrompt(DEFAULT_PROMPTS[next] ?? prompt);
+            }
+          }}
           disabled={busy}
           style={{ display: "block", marginBottom: 8, fontSize: 13, padding: 4 }}
         >

@@ -62,6 +62,13 @@ export class Session {
   >();
   private running = false;
   private stderrLines: string[] = [];
+  /**
+   * Aborting is what actually stops the spawned CLI. Closing the queue only
+   * sets a flag, so if query() is not currently awaiting take() -- mid-turn, or
+   * idle after a turn -- it never observes END and the child process outlives
+   * the socket. Every abandoned tab would leak a CLI.
+   */
+  private readonly abort = new AbortController();
 
   constructor(
     scenarioId: string | undefined,
@@ -169,7 +176,15 @@ export class Session {
     }
     this.pendingQuestions.clear();
     this.queue.close();
+    // Order matters: close the queue first so a generator that IS waiting
+    // unwinds cleanly, then abort to kill a CLI that is not reading from it.
+    if (!this.abort.signal.aborted) this.abort.abort();
     void this.snapshot();
+  }
+
+  /** True once close() has torn the session down. Exposed for tests. */
+  get closed(): boolean {
+    return this.abort.signal.aborted;
   }
 
   /** Start the single query() for this session. Safe to call more than once. */
@@ -213,6 +228,7 @@ export class Session {
         prompt: prompts(),
         options: {
           model: "sonnet",
+          abortController: this.abort,
           thinking: { type: "enabled", budgetTokens: 4000 },
           systemPrompt: this.scenario.systemPrompt,
           permissionMode: "default",
@@ -288,6 +304,10 @@ export class Session {
         }
       }
     } catch (err) {
+      if (this.abort.signal.aborted) {
+        // Expected: the socket closed and we tore the session down.
+        return;
+      }
       console.error("query() failed:", err);
       const detail = this.stderrLines.join("").trim();
       this.send({ type: "status", text: "" });

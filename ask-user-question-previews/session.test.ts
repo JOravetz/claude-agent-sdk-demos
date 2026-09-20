@@ -39,3 +39,26 @@ test("a session given a traversal id issues a fresh UUID instead", () => {
   assert.equal(isValidSessionId(session.id), true);
   assert.ok(!session.id.includes("/"));
 });
+
+test("close() marks the session torn down", () => {
+  const session = new Session("branding", () => {});
+  assert.equal(session.closed, false);
+  session.close();
+  assert.equal(session.closed, true);
+});
+
+test("close() is idempotent", () => {
+  const session = new Session("branding", () => {});
+  session.close();
+  session.close();
+  assert.equal(session.closed, true);
+});
+
+test("close() stops further messages reaching the agent", () => {
+  const session = new Session("branding", () => {});
+  session.close();
+  // Must not throw: the UI can still fire handlers as a socket tears down.
+  session.say("late message");
+  session.askMore();
+  assert.equal(session.closed, true);
+});
