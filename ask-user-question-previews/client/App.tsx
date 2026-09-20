@@ -3,7 +3,11 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-import { type Question, useAgentSocket } from "./useAgentSocket";
+import {
+  type LogEntry,
+  type Question,
+  useAgentSocket,
+} from "./useAgentSocket";
 
 export function App() {
   const { log, pending, status, busy, connected, submit, answer } =
@@ -195,23 +199,52 @@ function QuestionView({
 // Layout helpers below. None of this is specific to the AskUserQuestion feature.
 // -----------------------------------------------------------------------------
 
-const LogView = memo(function LogView({ log }: { log: string[] }) {
+const LogView = memo(function LogView({ log }: { log: LogEntry[] }) {
   return (
     <>
       {log.map((entry, i) =>
-        entry.startsWith("→ ") || entry.startsWith("— ") ? (
+        entry.kind === "note" ? (
           <div key={i} style={{ color: "#888", fontSize: 12, margin: "6px 0" }}>
-            {entry}
+            {entry.text}
           </div>
+        ) : entry.kind === "thinking" ? (
+          <ThinkingBlock key={i} text={entry.text} />
         ) : (
           <ReactMarkdown key={i} remarkPlugins={[remarkGfm]}>
-            {entry}
+            {entry.text}
           </ReactMarkdown>
         ),
       )}
     </>
   );
 });
+
+// Extended thinking, collapsed by default: useful to peek at while a turn is
+// running, but it would drown out the actual answer if always expanded.
+function ThinkingBlock({ text }: { text: string }) {
+  return (
+    <details style={{ margin: "8px 0" }}>
+      <summary
+        style={{ color: "#8b7fc7", fontSize: 12, cursor: "pointer" }}
+      >
+        thinking · {text.length} chars
+      </summary>
+      <div
+        style={{
+          margin: "6px 0 0",
+          padding: "8px 10px",
+          borderLeft: "2px solid #ddd8f0",
+          color: "#666",
+          fontSize: 12,
+          fontStyle: "italic",
+          whiteSpace: "pre-wrap",
+        }}
+      >
+        {text}
+      </div>
+    </details>
+  );
+}
 
 function Placeholder({ children }: { children: React.ReactNode }) {
   return (

@@ -4,13 +4,28 @@ import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { WebSocket, WebSocketServer } from "ws";
 
-if (!process.env.ANTHROPIC_API_KEY) {
-  // The SDK spawns the Claude CLI, which can also auth via keychain OAuth
-  // if you've run `claude login`. The env var isn't strictly required.
-  console.warn(
-    "ANTHROPIC_API_KEY not set. If you're logged into the Claude CLI, " +
-      "this will still work. Otherwise add the key to .env.",
-  );
+// Auth: this demo runs on the Claude CLI's own login (an Anthropic Max
+// subscription). The SDK spawns the CLI, which authenticates with the OAuth
+// credentials `claude login` writes to ~/.claude/.credentials.json — no API
+// key needed.
+//
+// An ANTHROPIC_API_KEY in the environment takes precedence over that login, so
+// a stale or placeholder value (e.g. the literal `sk-ant-...` copied out of
+// .env.example) makes every request fail with 401 "API key is invalid". Drop it
+// so the subscription login always wins. Set ANTHROPIC_AUTH=api-key to opt back
+// into key-based billing instead.
+if (process.env.ANTHROPIC_AUTH === "api-key") {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    console.warn("ANTHROPIC_AUTH=api-key but ANTHROPIC_API_KEY is not set.");
+  } else {
+    console.log("Auth: ANTHROPIC_API_KEY (key-based billing).");
+  }
+} else {
+  if (process.env.ANTHROPIC_API_KEY) {
+    delete process.env.ANTHROPIC_API_KEY;
+    console.log("Ignoring ANTHROPIC_API_KEY so the CLI login is used.");
+  }
+  console.log("Auth: Claude CLI login (run `claude login` if this fails).");
 }
 
 // Shape of AskUserQuestion's input. Defined locally so the demo stays
@@ -65,11 +80,26 @@ function send(ws: WebSocket, payload: unknown) {
 
 async function runQuery(ws: WebSocket, prompt: string) {
   send(ws, { type: "status", text: "starting..." });
+  // The CLI writes startup failures (bad auth, nested session, missing binary)
+  // to stderr and exits 1. Without this the browser only sees "process exited
+  // with code 1", so keep the last few lines to attach to the error.
+  const stderrLines: string[] = [];
   try {
     for await (const msg of query({
       prompt,
       options: {
         model: "sonnet",
+        // Extended thinking. Claude's reasoning arrives as `thinking` content
+        // blocks on the assistant messages below, which we stream to the
+        // browser so you can watch it work instead of staring at a spinner.
+        // Sonnet needs an explicit budget; `{ type: "adaptive" }` lets Opus 4.6+
+        // decide for itself.
+        thinking: { type: "enabled", budgetTokens: 4000 },
+        stderr: (data: string) => {
+          process.stderr.write(`[cli] ${data}`);
+          stderrLines.push(data);
+          if (stderrLines.length > 20) stderrLines.shift();
+        },
         systemPrompt:
           "You are a branding assistant. When the user asks for help branding a " +
           "site or product, gather their preferences first: ask about color " +
@@ -83,14 +113,18 @@ async function runQuery(ws: WebSocket, prompt: string) {
           "my own idea' or 'I'll tell you later' that require follow-up input. " +
           "The user has a free-text box for that; your options should all be " +
           "concrete choices with previews.\n\n" +
-          "When you have gathered enough, exit plan mode and output the final " +
+          "When you have gathered enough, output the final " +
           "brand guide directly as markdown: color hex codes, font names, " +
           "spacing/radius values, and a usage summary. You have no write tools " +
           "available, so the markdown IS the deliverable.",
-        // Plan mode: Claude researches and asks clarifying questions before
-        // acting. AskUserQuestion still fires in plan mode, and the docs note
-        // this mode makes Claude more likely to ask.
-        permissionMode: "plan",
+        // NOT plan mode. Plan mode makes Claude more likely to ask, but it
+        // wraps up by calling ExitPlanMode, and that call ends the turn --
+        // query() returns before the brand guide is ever written, leaving the
+        // UI on "The final deliverable will be...". Approving the tool does not
+        // help; neither does switching the mode from canUseTool. The system
+        // prompt above already forces AskUserQuestion, so the default mode asks
+        // just as many questions and actually produces the deliverable.
+        permissionMode: "default",
         // Restrict available tools to just AskUserQuestion.
         tools: ["AskUserQuestion"],
         // Opt into HTML previews (the feature this demo showcases).
@@ -153,6 +187,12 @@ async function runQuery(ws: WebSocket, prompt: string) {
           if (block.type === "text") {
             send(ws, { type: "text", text: block.text });
           }
+          // Extended thinking: Claude's internal reasoning for this turn.
+          // Shown in the log so the UI has something to say while a turn is
+          // still generating.
+          if (block.type === "thinking") {
+            send(ws, { type: "thinking", text: block.thinking });
+          }
           if (block.type === "tool_use") {
             send(ws, { type: "status", text: `calling ${block.name}...` });
           }
@@ -180,8 +220,14 @@ async function runQuery(ws: WebSocket, prompt: string) {
     }
   } catch (err) {
     console.error("query() failed:", err);
+    // Attach whatever the CLI said on its way out; the thrown error itself
+    // only carries the exit code.
+    const detail = stderrLines.join("").trim();
     send(ws, { type: "status", text: "" });
-    send(ws, { type: "text", text: `Error: ${err}` });
+    send(ws, {
+      type: "text",
+      text: detail ? `Error: ${err}\n\n\`\`\`\n${detail}\n\`\`\`` : `Error: ${err}`,
+    });
     send(ws, { type: "done" });
   }
 }

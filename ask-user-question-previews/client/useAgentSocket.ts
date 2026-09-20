@@ -14,9 +14,16 @@ export type Question = {
 };
 export type PendingQuestion = { id: string; question: Question };
 
+/**
+ * One line in the conversation log. `text` is Claude's markdown output,
+ * `thinking` is its extended-thinking reasoning, and `note` is UI chrome
+ * (“→ chose: X”, “— done —”).
+ */
+export type LogEntry = { kind: "text" | "thinking" | "note"; text: string };
+
 export function useAgentSocket(url: string) {
   const ws = useRef<WebSocket | null>(null);
-  const [log, setLog] = useState<string[]>([]);
+  const [log, setLog] = useState<LogEntry[]>([]);
   const [pending, setPending] = useState<PendingQuestion | null>(null);
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
@@ -40,9 +47,12 @@ export function useAgentSocket(url: string) {
         if (msg.type === "status") setStatus(msg.text);
         if (msg.type === "question")
           setPending({ id: msg.id, question: msg.question });
-        if (msg.type === "text") setLog((l) => [...l, msg.text]);
+        if (msg.type === "text")
+          setLog((l) => [...l, { kind: "text", text: msg.text }]);
+        if (msg.type === "thinking")
+          setLog((l) => [...l, { kind: "thinking", text: msg.text }]);
         if (msg.type === "done") {
-          setLog((l) => [...l, "— done —"]);
+          setLog((l) => [...l, { kind: "note", text: "— done —" }]);
           setBusy(false);
         }
       };
@@ -66,7 +76,7 @@ export function useAgentSocket(url: string) {
     if (!pending) return;
     ws.current?.send(JSON.stringify({ type: "answer", id: pending.id, label }));
     setPending(null);
-    setLog((l) => [...l, `→ chose: ${label}`]);
+    setLog((l) => [...l, { kind: "note", text: `→ chose: ${label}` }]);
   }
 
   return { log, pending, status, busy, connected, submit, answer };
