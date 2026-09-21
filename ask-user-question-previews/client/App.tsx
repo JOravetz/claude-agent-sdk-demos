@@ -28,7 +28,7 @@ const DEFAULT_PROMPTS: Record<string, string> = {
 
 export function App() {
   const {
-    log, pending, picks, history, phase, design,
+    log, pending, picks, history, phase, designs, queued,
     status, busy, connected,
     submit, answer, amend, say, askMore, toDesign,
   } = useAgentSocket("ws://localhost:3001/ws");
@@ -76,7 +76,7 @@ export function App() {
         <PicksPanel
           picks={picks}
           history={history}
-          busy={busy}
+          queued={queued}
           onAmend={amend}
           onAskMore={askMore}
           onToDesign={toDesign}
@@ -133,14 +133,17 @@ export function App() {
           </div>
         ) : null}
 
-        {design && phase === "design" && (
-          <DesignPane
-            html={design}
-            label={
-              scenario === "tpm-rank" ? "Designed tpm-rank view" : "Designed page"
-            }
-          />
-        )}
+        {phase === "design" &&
+          designs.map((html, i) => (
+            <DesignPane
+              key={i}
+              html={html}
+              label={
+                (scenario === "tpm-rank" ? "Designed tpm-rank view" : "Designed page") +
+                (designs.length > 1 ? ` ${i + 1} of ${designs.length}` : "")
+              }
+            />
+          ))}
       </section>
     </main>
   );

@@ -4,7 +4,7 @@ import type { Pick } from "./useAgentSocket";
 type Props = {
   picks: Pick[];
   history: Pick[];
-  busy: boolean;
+  queued: string[];
   onAmend: (pickId: string, label: string, description: string) => void;
   onAskMore: () => void;
   onToDesign: () => void;
@@ -18,7 +18,7 @@ type Props = {
 export function PicksPanel({
   picks,
   history,
-  busy,
+  queued,
   onAmend,
   onAskMore,
   onToDesign,
@@ -111,14 +111,20 @@ export function PicksPanel({
         </details>
       )}
 
+      {/* Never disabled. These used to be disabled={busy}, so pressing one
+          mid-turn silently did nothing - the click was simply dropped. The
+          server queues the message regardless, so the honest behaviour is to
+          send it and show that it is waiting its turn. */}
       <div style={{ display: "flex", gap: 6, marginTop: 12 }}>
-        <button onClick={onAskMore} disabled={busy}>
-          Ask me more
-        </button>
-        <button onClick={onToDesign} disabled={busy}>
-          Continue to Design →
-        </button>
+        <button onClick={onAskMore}>Ask me more</button>
+        <button onClick={onToDesign}>Continue to Design →</button>
       </div>
+
+      {queued.length > 0 && (
+        <div style={{ marginTop: 8, fontSize: 12, color: "#8b7fc7" }}>
+          queued: {queued.join(", ")} — will run when the agent finishes this turn
+        </div>
+      )}
 
       <form
         style={{ display: "flex", gap: 4, marginTop: 8 }}

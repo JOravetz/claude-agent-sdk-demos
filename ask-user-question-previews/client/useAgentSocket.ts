@@ -32,7 +32,12 @@ export function useAgentSocket(url: string) {
   const [picks, setPicks] = useState<Pick[]>([]);
   const [history, setHistory] = useState<Pick[]>([]);
   const [phase, setPhase] = useState<Phase>("gather");
-  const [design, setDesign] = useState<string | null>(null);
+  // Every design produced this session, oldest first. A later document used
+  // to overwrite the earlier one, silently losing work the user had waited
+  // minutes for.
+  const [designs, setDesigns] = useState<string[]>([]);
+  // Intents pressed while the agent was mid-turn, shown as pending.
+  const [queued, setQueued] = useState<string[]>([]);
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
   const [connected, setConnected] = useState(false);
@@ -71,7 +76,9 @@ export function useAgentSocket(url: string) {
           case "phase":
             return setPhase(msg.phase);
           case "design":
-            return setDesign(msg.html);
+            setDesigns((d) => (d[d.length - 1] === msg.html ? d : [...d, msg.html]));
+            setQueued([]);
+            return;
           case "text":
             return setLog((l) => [...l, { kind: "text", text: msg.text }]);
           case "thinking":
@@ -105,7 +112,8 @@ export function useAgentSocket(url: string) {
         sessionId = null;
       }
       setLog([]);
-      setDesign(null);
+      setDesigns([]);
+      setQueued([]);
       setBusy(true);
       post({ type: "prompt", text: prompt, scenario, sessionId });
     },
@@ -125,6 +133,7 @@ export function useAgentSocket(url: string) {
   const amend = useCallback(
     (pickId: string, label: string, description: string) => {
       post({ type: "amend", pickId, label, description });
+      setQueued((q) => [...q, `change to ${label}`]);
       setLog((l) => [...l, { kind: "note", text: `✎ changed to: ${label}` }]);
     },
     [post],
@@ -138,8 +147,17 @@ export function useAgentSocket(url: string) {
     [post],
   );
 
-  const askMore = useCallback(() => post({ type: "ask-more" }), [post]);
-  const toDesign = useCallback(() => post({ type: "to-design" }), [post]);
+  // Fix: these used to be disabled while the agent was mid-turn, so a click
+  // did nothing at all - no queueing, no feedback. The server queues the
+  // message either way, so send it and show the user it was accepted.
+  const askMore = useCallback(() => {
+    post({ type: "ask-more" });
+    setQueued((q) => [...q, "more questions"]);
+  }, [post]);
+  const toDesign = useCallback(() => {
+    post({ type: "to-design" });
+    setQueued((q) => [...q, "design"]);
+  }, [post]);
 
   return {
     log,
@@ -147,7 +165,8 @@ export function useAgentSocket(url: string) {
     picks,
     history,
     phase,
-    design,
+    designs,
+    queued,
     status,
     busy,
     connected,

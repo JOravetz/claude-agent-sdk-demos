@@ -40,7 +40,9 @@ type Snapshot = {
   picks: PickStoreData;
   /** Last assistant text block: the brand guide, the invocation, etc. */
   deliverable?: string;
-  /** Last phase-2 HTML document. */
+  /** Every phase-2 HTML document, oldest first. */
+  designs?: string[];
+  /** Pre-migration single document; read, never written. */
   design?: string;
 };
 
@@ -98,7 +100,7 @@ export class Session {
   private running = false;
   private stderrLines: string[] = [];
   private deliverable?: string;
-  private design?: string;
+  private designs: string[] = [];
   /**
    * Aborting is what actually stops the spawned CLI. Closing the queue only
    * sets a flag, so if query() is not currently awaiting take() -- mid-turn, or
@@ -136,7 +138,9 @@ export class Session {
         session.picks = PickStore.fromObject(parsed.picks);
         session.phase = parsed.phase;
         session.deliverable = parsed.deliverable;
-        session.design = parsed.design;
+        // Older snapshots held a single design; carry it forward as a list.
+        session.designs =
+          parsed.designs ?? (parsed.design ? [parsed.design] : []);
       } else {
         // Snapshot written before deliverables were stored.
         session.picks = PickStore.fromObject(parsed);
@@ -154,7 +158,7 @@ export class Session {
       phase: this.phase,
       picks: this.picks.toObject(),
       ...(this.deliverable ? { deliverable: this.deliverable } : {}),
-      ...(this.design ? { design: this.design } : {}),
+      ...(this.designs.length ? { designs: this.designs } : {}),
     };
     try {
       await writeIfChanged(
@@ -245,8 +249,8 @@ export class Session {
   get deliverableForTest(): string | undefined {
     return this.deliverable;
   }
-  get designForTest(): string | undefined {
-    return this.design;
+  get designsForTest(): string[] {
+    return this.designs;
   }
 
   /** Start the single query() for this session. Safe to call more than once. */
@@ -277,7 +281,7 @@ export class Session {
     if (this.deliverable) {
       this.send({ type: "text", text: this.deliverable });
     }
-    if (this.design) this.send({ type: "design", html: this.design });
+    for (const html of this.designs) this.send({ type: "design", html });
 
     const queue = this.queue;
     async function* prompts(): AsyncGenerator<SDKUserMessage> {
@@ -363,8 +367,8 @@ export class Session {
             if (block.type === "text") {
               const html =
                 this.phase === "design" ? extractHtmlBlock(block.text) : null;
-              if (html) {
-                this.design = html;
+              if (html && this.designs[this.designs.length - 1] !== html) {
+                this.designs.push(html);
                 this.send({ type: "design", html });
               }
               // Keep the last substantial text: that is the deliverable, and

@@ -102,7 +102,7 @@ test("rehydrate restores picks, phase and the deliverable", async () => {
       ],
     },
     deliverable: "# Brand Guide\n\nDeep Forest #1F2B25",
-    design: "<h1>mock</h1>",
+    designs: ["<h1>mock</h1>"],
   });
 
   await withSnapshot(snapshot, async (id) => {
@@ -112,7 +112,7 @@ test("rehydrate restores picks, phase and the deliverable", async () => {
     assert.equal(session.picksForTest.length, 1);
     assert.equal(session.picksForTest[0].label, "Editorial");
     assert.match(session.deliverableForTest ?? "", /Deep Forest/);
-    assert.equal(session.designForTest, "<h1>mock</h1>");
+    assert.deepEqual(session.designsForTest, ["<h1>mock</h1>"]);
   });
 });
 
@@ -195,4 +195,33 @@ test("stripPreviews copes with options that never had a preview", () => {
   ];
   const lean = stripPreviews(questions);
   assert.equal(lean[0].options[0].label, "A");
+});
+
+test("a pre-migration snapshot's single design is carried forward as a list", async () => {
+  const legacy = JSON.stringify({
+    version: 1,
+    scenario: "branding",
+    phase: "design",
+    picks: { nextId: 1, picks: [] },
+    design: "<h1>old single</h1>",
+  });
+  await withSnapshot(legacy, async (id) => {
+    const session = await Session.rehydrate(id, "branding", () => {});
+    assert.deepEqual(session.designsForTest, ["<h1>old single</h1>"]);
+  });
+});
+
+test("multiple designs accumulate rather than replacing each other", async () => {
+  const snapshot = JSON.stringify({
+    version: 1,
+    scenario: "branding",
+    phase: "design",
+    picks: { nextId: 1, picks: [] },
+    designs: ["<h1>one</h1>", "<h1>two</h1>"],
+  });
+  await withSnapshot(snapshot, async (id) => {
+    const session = await Session.rehydrate(id, "branding", () => {});
+    assert.equal(session.designsForTest.length, 2);
+    assert.equal(session.designsForTest[1], "<h1>two</h1>");
+  });
 });
