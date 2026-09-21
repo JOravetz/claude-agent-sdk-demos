@@ -1,5 +1,6 @@
 import type { Scenario } from "./index.js";
 import { EVIDENCE, TIER_EVIDENCE } from "./tpm-rank-evidence.js";
+import { formatTape, tapeSample } from "../fixtures/tape.js";
 
 /** Serialize the tables into the prompt so the model cannot invent numbers. */
 function evidenceBlock(): string {
@@ -35,6 +36,14 @@ export const tpmRank: Scenario = {
     "decisions that change what the table shows, and show me what each choice " +
     "costs and buys.",
   previewStyle: "hybrid",
+  designPrompt: (seed) =>
+    "Stop gathering. Continue to Design: first give me the final invocation " +
+    "and the per-flag rationale, then the phase 2 HTML dashboard document.\n\n" +
+    "Render the dashboard against exactly these rows. They are SIMULATED - " +
+    "synthetic symbols, not a recorded session - and the dashboard must say " +
+    "so visibly. Do not add, rename, or re-price any row.\n\n```\n" +
+    formatTape(tapeSample(14, seed)) +
+    "\n```",
   systemPrompt: `You help an experienced trader choose ignition parameters for \`bb-tpm-rank\`, a live trades/min ranking tool. You never run it; you produce an invocation and, later, a view design.
 
 ASK ABOUT EXACTLY THESE EIGHT FLAGS, one or two at a time, in this order:

@@ -8,6 +8,8 @@ export type Pick = {
   supersededBy?: string;
 };
 
+export type PickStoreData = { nextId: number; picks: Pick[] };
+
 export type PickInput = {
   header: string;
   question: string;
@@ -58,15 +60,22 @@ export class PickStore {
     return this.picks.filter((p) => p.supersededBy);
   }
 
+  toObject(): PickStoreData {
+    return { nextId: this.nextId, picks: this.picks };
+  }
+
+  static fromObject(data: PickStoreData): PickStore {
+    const store = new PickStore();
+    store.picks = data.picks;
+    store.nextId = data.nextId;
+    return store;
+  }
+
   toJSON(): string {
-    return JSON.stringify({ nextId: this.nextId, picks: this.picks }, null, 2);
+    return JSON.stringify(this.toObject(), null, 2);
   }
 
   static fromJSON(json: string): PickStore {
-    const parsed = JSON.parse(json) as { nextId: number; picks: Pick[] };
-    const store = new PickStore();
-    store.picks = parsed.picks;
-    store.nextId = parsed.nextId;
-    return store;
+    return PickStore.fromObject(JSON.parse(json) as PickStoreData);
   }
 }

@@ -4,10 +4,9 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { END, MessageQueue } from "./queue.js";
-import { PickStore, type Pick } from "./picks.js";
+import { PickStore, type Pick, type PickStoreData } from "./picks.js";
 import { writeIfChanged } from "./snapshot.js";
 import { getScenario, type Scenario } from "./scenarios/index.js";
-import { formatTape, tapeSample } from "./fixtures/tape.js";
 
 export type Phase = "gather" | "design";
 
@@ -26,6 +25,23 @@ type AskedQuestion = {
   question: string;
   header?: string;
   options: Array<{ label: string; description: string; preview?: string }>;
+};
+
+/**
+ * What a session snapshot holds. Picks alone are not enough: the deliverable is
+ * the thing the user actually wanted, and losing it on a closed tab makes
+ * "resume" a half-promise. No timestamp field -- the file mtime carries that,
+ * and a changing timestamp would defeat writeIfChanged.
+ */
+type Snapshot = {
+  version: 1;
+  scenario: string;
+  phase: Phase;
+  picks: PickStoreData;
+  /** Last assistant text block: the brand guide, the invocation, etc. */
+  deliverable?: string;
+  /** Last phase-2 HTML document. */
+  design?: string;
 };
 
 const SESSION_DIR = ".sessions";
@@ -62,6 +78,8 @@ export class Session {
   >();
   private running = false;
   private stderrLines: string[] = [];
+  private deliverable?: string;
+  private design?: string;
   /**
    * Aborting is what actually stops the spawned CLI. Closing the queue only
    * sets a flag, so if query() is not currently awaiting take() -- mid-turn, or
@@ -94,7 +112,16 @@ export class Session {
     // argument: a rejected id gets a fresh UUID with no snapshot to load.
     try {
       const raw = await readFile(join(SESSION_DIR, `${session.id}.json`), "utf8");
-      session.picks = PickStore.fromJSON(raw);
+      const parsed = JSON.parse(raw) as Snapshot | PickStoreData;
+      if ("version" in parsed) {
+        session.picks = PickStore.fromObject(parsed.picks);
+        session.phase = parsed.phase;
+        session.deliverable = parsed.deliverable;
+        session.design = parsed.design;
+      } else {
+        // Snapshot written before deliverables were stored.
+        session.picks = PickStore.fromObject(parsed);
+      }
     } catch {
       // No snapshot: a fresh session under a known id.
     }
@@ -102,10 +129,18 @@ export class Session {
   }
 
   private async snapshot(): Promise<void> {
+    const doc: Snapshot = {
+      version: 1,
+      scenario: this.scenario.id,
+      phase: this.phase,
+      picks: this.picks.toObject(),
+      ...(this.deliverable ? { deliverable: this.deliverable } : {}),
+      ...(this.design ? { design: this.design } : {}),
+    };
     try {
       await writeIfChanged(
         join(SESSION_DIR, `${this.id}.json`),
-        this.picks.toJSON(),
+        JSON.stringify(doc, null, 2),
       );
     } catch (err) {
       // A failed snapshot must never kill a live conversation.
@@ -148,22 +183,12 @@ export class Session {
     this.phase = "design";
     this.send({ type: "phase", phase: "design" });
 
-    // The market may be closed and the demo never runs bb-tpm-rank, so supply
-    // rows rather than letting the model invent them. Seeded from the session
-    // id: different sessions get different tapes, each one reproducible.
+    // The instruction is the SCENARIO's business. It used to live here, which
+    // meant a branding conversation was handed a simulated market tape and
+    // asked for "the per-flag rationale".
     const seed = [...this.id].reduce((acc, c) => (acc * 31 + c.charCodeAt(0)) | 0, 7);
-    const rows = formatTape(tapeSample(14, seed));
-
-    this.say(
-      "Stop gathering. Continue to Design: first give me the final invocation " +
-        "and the per-flag rationale, then the phase 2 HTML dashboard document.\n\n" +
-        "Render the dashboard against exactly these rows. They are SIMULATED - " +
-        "synthetic symbols, not a recorded session - and the dashboard must say " +
-        "so visibly. Do not add, rename, or re-price any row.\n\n" +
-        "```\n" +
-        rows +
-        "\n```",
-    );
+    this.say(this.scenario.designPrompt(seed));
+    void this.snapshot();
   }
 
   askMore(): void {
@@ -187,6 +212,17 @@ export class Session {
     return this.abort.signal.aborted;
   }
 
+  // Read-only views of private state, for tests.
+  get picksForTest(): Pick[] {
+    return this.picks.current();
+  }
+  get deliverableForTest(): string | undefined {
+    return this.deliverable;
+  }
+  get designForTest(): string | undefined {
+    return this.design;
+  }
+
   /** Start the single query() for this session. Safe to call more than once. */
   async start(firstPrompt: string): Promise<void> {
     if (this.running) {
@@ -208,6 +244,14 @@ export class Session {
     }
     this.send({ type: "session", id: this.id, scenario: this.scenario.id });
     this.emitPicks();
+    // Show what the previous run produced. The conversation did not survive,
+    // but the artifact did, and a resumed session that showed nothing would be
+    // indistinguishable from a lost one.
+    if (this.phase === "design") this.send({ type: "phase", phase: this.phase });
+    if (this.deliverable) {
+      this.send({ type: "text", text: this.deliverable });
+    }
+    if (this.design) this.send({ type: "design", html: this.design });
 
     const queue = this.queue;
     async function* prompts(): AsyncGenerator<SDKUserMessage> {
@@ -284,7 +328,13 @@ export class Session {
             if (block.type === "text") {
               const html =
                 this.phase === "design" ? extractHtmlBlock(block.text) : null;
-              if (html) this.send({ type: "design", html });
+              if (html) {
+                this.design = html;
+                this.send({ type: "design", html });
+              }
+              // Keep the last substantial text: that is the deliverable, and
+              // losing it when the tab closes is what made resume a half-promise.
+              if (block.text.trim().length > 200) this.deliverable = block.text;
               this.send({ type: "text", text: block.text });
             }
             if (block.type === "thinking") {
@@ -299,6 +349,7 @@ export class Session {
           this.send({ type: "status", text: "generating..." });
         }
         if (msg.type === "result") {
+          void this.snapshot();
           this.send({ type: "status", text: "" });
           this.send({ type: "done" });
         }

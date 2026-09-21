@@ -1,0 +1,71 @@
+npm notice run ask-user-question-previews@1.0.0 dev
+npm notice run concurrently "npm:dev:server" "npm:dev:client"
+[dev:server] npm notice run ask-user-question-previews@1.0.0 dev:server
+[dev:server] npm notice run tsx watch server.ts
+[dev:client] npm notice run ask-user-question-previews@1.0.0 dev:client
+[dev:client] npm notice run vite --port 5173
+[dev:client] 
+[dev:client]   VITE v5.4.21  ready in 175 ms
+[dev:client] 
+[dev:client]   ➜  Local:   http://localhost:5173/
+[dev:client]   ➜  Network: use --host to expose
+[dev:server] Auth: Claude CLI login (run `claude login` if this fails).
+[dev:server] server on :3001, ws at /ws
+[dev:server] [session 5cde0951-7d51-4257-ae4c-f78efc5b21e0] snapshot failed: Error: ENOENT: no such file or directory, rename '.sessions/5cde0951-7d51-4257-ae4c-f78efc5b21e0.json.5233.tmp' -> '.sessions/5cde0951-7d51-4257-ae4c-f78efc5b21e0.json'
+[dev:server]     at async rename (node:internal/fs/promises:842:10)
+[dev:server]     at async writeIfChanged (/home/jjoravet/claude-agent-sdk-demos/ask-user-question-previews/snapshot.ts:21:3)
+[dev:server]     at async Session.snapshot (/home/jjoravet/claude-agent-sdk-demos/ask-user-question-previews/session.ts:106:7) {
+[dev:server]   errno: -2,
+[dev:server]   code: 'ENOENT',
+[dev:server]   syscall: 'rename',
+[dev:server]   path: '.sessions/5cde0951-7d51-4257-ae4c-f78efc5b21e0.json.5233.tmp',
+[dev:server]   dest: '.sessions/5cde0951-7d51-4257-ae4c-f78efc5b21e0.json'
+[dev:server] }
+[dev:server] [session 5cde0951-7d51-4257-ae4c-f78efc5b21e0] snapshot failed: Error: ENOENT: no such file or directory, rename '.sessions/5cde0951-7d51-4257-ae4c-f78efc5b21e0.json.5233.tmp' -> '.sessions/5cde0951-7d51-4257-ae4c-f78efc5b21e0.json'
+[dev:server]     at async rename (node:internal/fs/promises:842:10)
+[dev:server]     at async writeIfChanged (/home/jjoravet/claude-agent-sdk-demos/ask-user-question-previews/snapshot.ts:21:3)
+[dev:server]     at async Session.snapshot (/home/jjoravet/claude-agent-sdk-demos/ask-user-question-previews/session.ts:106:7) {
+[dev:server]   errno: -2,
+[dev:server]   code: 'ENOENT',
+[dev:server]   syscall: 'rename',
+[dev:server]   path: '.sessions/5cde0951-7d51-4257-ae4c-f78efc5b21e0.json.5233.tmp',
+[dev:server]   dest: '.sessions/5cde0951-7d51-4257-ae4c-f78efc5b21e0.json'
+[dev:server] }
+[dev:server] [session 58367c22-797e-4cac-a3b4-42da7c49715c] snapshot failed: Error: ENOENT: no such file or directory, rename '.sessions/58367c22-797e-4cac-a3b4-42da7c49715c.json.5233.tmp' -> '.sessions/58367c22-797e-4cac-a3b4-42da7c49715c.json'
+[dev:server]     at async rename (node:internal/fs/promises:842:10)
+[dev:server]     at async writeIfChanged (/home/jjoravet/claude-agent-sdk-demos/ask-user-question-previews/snapshot.ts:21:3)
+[dev:server]     at async Session.snapshot (/home/jjoravet/claude-agent-sdk-demos/ask-user-question-previews/session.ts:106:7) {
+[dev:server]   errno: -2,
+[dev:server]   code: 'ENOENT',
+[dev:server]   syscall: 'rename',
+[dev:server]   path: '.sessions/58367c22-797e-4cac-a3b4-42da7c49715c.json.5233.tmp',
+[dev:server]   dest: '.sessions/58367c22-797e-4cac-a3b4-42da7c49715c.json'
+[dev:server] }
+[dev:server] [session 58367c22-797e-4cac-a3b4-42da7c49715c] snapshot failed: Error: ENOENT: no such file or directory, rename '.sessions/58367c22-797e-4cac-a3b4-42da7c49715c.json.5233.tmp' -> '.sessions/58367c22-797e-4cac-a3b4-42da7c49715c.json'
+[dev:server]     at async rename (node:internal/fs/promises:842:10)
+[dev:server]     at async writeIfChanged (/home/jjoravet/claude-agent-sdk-demos/ask-user-question-previews/snapshot.ts:21:3)
+[dev:server]     at async Session.snapshot (/home/jjoravet/claude-agent-sdk-demos/ask-user-question-previews/session.ts:106:7) {
+[dev:server]   errno: -2,
+[dev:server]   code: 'ENOENT',
+[dev:server]   syscall: 'rename',
+[dev:server]   path: '.sessions/58367c22-797e-4cac-a3b4-42da7c49715c.json.5233.tmp',
+[dev:server]   dest: '.sessions/58367c22-797e-4cac-a3b4-42da7c49715c.json'
+[dev:server] }
+[dev:server] 7:12:25 PM [tsx] change in ./picks.ts Restarting...
+[dev:server] cAuth: Claude CLI login (run `claude login` if this fails).
+[dev:server] server on :3001, ws at /ws
+[dev:server] 7:12:47 PM [tsx] change in ./session.ts Restarting...
+[dev:server] cAuth: Claude CLI login (run `claude login` if this fails).
+[dev:server] server on :3001, ws at /ws
+[dev:server] 7:12:55 PM [tsx] change in ./session.ts Restarting...
+[dev:server] cAuth: Claude CLI login (run `claude login` if this fails).
+[dev:server] server on :3001, ws at /ws
+[dev:server] 7:13:04 PM [tsx] change in ./scenarios/tpm-rank.ts Restarting...
+[dev:server] cAuth: Claude CLI login (run `claude login` if this fails).
+[dev:server] server on :3001, ws at /ws
+[dev:server] 7:13:20 PM [tsx] change in ./scenarios/branding.ts Restarting...
+[dev:server] cAuth: Claude CLI login (run `claude login` if this fails).
+[dev:server] server on :3001, ws at /ws
+[dev:server] 7:14:10 PM [tsx] change in ./session.ts Restarting...
+[dev:server] cAuth: Claude CLI login (run `claude login` if this fails).
+[dev:server] server on :3001, ws at /ws

@@ -62,3 +62,74 @@ test("close() stops further messages reaching the agent", () => {
   session.askMore();
   assert.equal(session.closed, true);
 });
+
+// --- snapshot persistence -------------------------------------------------
+// Session.rehydrate reads .sessions/<id>.json relative to cwd, so these write
+// a real file under a throwaway UUID and clean it up.
+import { mkdir, rm, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { join } from "node:path";
+
+async function withSnapshot(
+  body: string,
+  fn: (id: string) => Promise<void>,
+): Promise<void> {
+  const id = randomUUID();
+  const file = join(".sessions", `${id}.json`);
+  await mkdir(".sessions", { recursive: true });
+  await writeFile(file, body, "utf8");
+  try {
+    await fn(id);
+  } finally {
+    await rm(file, { force: true });
+  }
+}
+
+test("rehydrate restores picks, phase and the deliverable", async () => {
+  const snapshot = JSON.stringify({
+    version: 1,
+    scenario: "branding",
+    phase: "design",
+    picks: {
+      nextId: 2,
+      picks: [
+        { id: "p1", header: "Vibe", question: "Which vibe?", label: "Editorial", description: "d" },
+      ],
+    },
+    deliverable: "# Brand Guide\n\nDeep Forest #1F2B25",
+    design: "<h1>mock</h1>",
+  });
+
+  await withSnapshot(snapshot, async (id) => {
+    const sent: unknown[] = [];
+    const session = await Session.rehydrate(id, "branding", (p) => sent.push(p));
+    assert.equal(session.phase, "design");
+    assert.equal(session.picksForTest.length, 1);
+    assert.equal(session.picksForTest[0].label, "Editorial");
+    assert.match(session.deliverableForTest ?? "", /Deep Forest/);
+    assert.equal(session.designForTest, "<h1>mock</h1>");
+  });
+});
+
+test("rehydrate still reads a legacy picks-only snapshot", async () => {
+  const legacy = JSON.stringify({
+    nextId: 2,
+    picks: [
+      { id: "p1", header: "Vibe", question: "Which vibe?", label: "Editorial", description: "d" },
+    ],
+  });
+
+  await withSnapshot(legacy, async (id) => {
+    const session = await Session.rehydrate(id, "branding", () => {});
+    assert.equal(session.picksForTest.length, 1);
+    assert.equal(session.phase, "gather");
+    assert.equal(session.deliverableForTest, undefined);
+  });
+});
+
+test("rehydrate survives a corrupt snapshot", async () => {
+  await withSnapshot("{not json", async (id) => {
+    const session = await Session.rehydrate(id, "branding", () => {});
+    assert.equal(session.picksForTest.length, 0);
+  });
+});

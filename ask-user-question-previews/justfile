@@ -406,10 +406,17 @@ sessions:
         echo "no stored sessions"
         exit 0
     fi
-    printf '%-38s %6s  %s\n' "SESSION" "PICKS" "MODIFIED"
+    printf '%-38s %-10s %5s %6s %9s  %s\n' "SESSION" "SCENARIO" "PICKS" "PHASE" "SAVED" "MODIFIED"
     for f in .sessions/*.json; do
-        n=$(node -e "try{console.log(JSON.parse(require('fs').readFileSync('$f','utf8')).picks.filter(p=>!p.supersededBy).length)}catch{console.log('?')}")
-        printf '%-38s %6s  %s\n' "$(basename "$f" .json)" "${n}" "$(date -r "$f" '+%Y-%m-%d %H:%M')"
+        read -r scenario n phase saved < <(node -e "
+          try {
+            const d = JSON.parse(require('fs').readFileSync('$f','utf8'));
+            const store = d.version ? d.picks : d;
+            const live = store.picks.filter(p => !p.supersededBy).length;
+            const saved = d.design ? 'design' : (d.deliverable ? 'text' : '-');
+            console.log([d.scenario ?? '?', live, d.phase ?? 'gather', saved].join(' '));
+          } catch { console.log('? ? ? ?'); }")
+        printf '%-38s %-10s %5s %6s %9s  %s\n' "$(basename "$f" .json)" "${scenario}" "${n}" "${phase}" "${saved}" "$(date -r "$f" '+%Y-%m-%d %H:%M')"
     done
 
 

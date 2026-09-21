@@ -10,6 +10,17 @@ export type Scenario = {
   defaultPrompt: string;
   systemPrompt: string;
   previewStyle: PreviewStyle;
+  /**
+   * Instruction pushed when the user presses "Continue to Design".
+   *
+   * This belongs to the scenario, not the session. It used to be one hardcoded
+   * string, so a branding conversation was handed a simulated market tape and
+   * asked for "the per-flag rationale".
+   *
+   * `seed` is derived from the session id, so a scenario that needs sample data
+   * can generate a reproducible set.
+   */
+  designPrompt: (seed: number) => string;
 };
 
 export const SCENARIOS: Record<string, Scenario> = {
