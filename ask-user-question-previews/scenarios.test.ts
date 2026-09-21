@@ -65,9 +65,10 @@ test("both scenarios steer away from the retired Unsplash source API", () => {
 test("branding sources real imagery by searching; tpm-rank forbids images", () => {
   const branding = SCENARIOS.branding.systemPrompt;
   assert.match(branding, /WebSearch/, "branding should be told to search");
-  assert.match(branding, /upload\.wikimedia\.org/, "should prefer a stable host");
+  assert.match(branding, /Special:FilePath/, "should use the fetch-free image URL");
+  assert.match(branding, /403/, "should warn that WebFetch on wikimedia fails");
   assert.match(branding, /loremflickr/, "should name a fallback");
-  assert.match(branding, /Never guess or construct an image URL/i);
+  assert.match(branding, /Never invent/i, "should forbid invented image URLs");
 
   // tpm-rank's ban sits in the system prompt, which is in force for the whole
   // conversation, so it covers the design turn too.
