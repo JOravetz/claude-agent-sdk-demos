@@ -10,3 +10,6 @@ dist
 # superpowers brainstorming mockups/state
 .superpowers/
 .sessions/
+
+# detached dev server log (just up)
+.dev.log
