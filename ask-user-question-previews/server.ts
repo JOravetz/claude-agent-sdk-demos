@@ -23,6 +23,23 @@ if (process.env.ANTHROPIC_AUTH === "api-key") {
   console.log("Auth: Claude CLI login (run `claude login` if this fails).");
 }
 
+/**
+ * A dev server must not die because one tab closed at an awkward moment.
+ *
+ * Aborting a query can make the SDK throw from inside its own async handlers
+ * (writing a tool response to a transport that just went away). Those land as
+ * unhandled rejections with no call site of ours to catch them. Log and carry
+ * on; anything else is still fatal, so real bugs stay loud.
+ */
+process.on("unhandledRejection", (reason) => {
+  const message = reason instanceof Error ? reason.message : String(reason);
+  if (/abort/i.test(message)) {
+    console.warn(`[server] ignoring post-abort rejection: ${message}`);
+    return;
+  }
+  throw reason;
+});
+
 const server = createServer();
 const wss = new WebSocketServer({ server, path: "/ws" });
 

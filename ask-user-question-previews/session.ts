@@ -215,14 +215,21 @@ export class Session {
   }
 
   close(): void {
-    for (const [, waiter] of this.pendingQuestions) {
-      waiter.reject(new Error("client disconnected"));
-    }
+    // Abort FIRST, and do NOT settle the pending question promises.
+    //
+    // Rejecting them looks tidier but crashes the server: the rejection
+    // propagates into canUseTool, the SDK then tries to write a tool response
+    // to the transport we just aborted, and its write() throws "Operation
+    // aborted" inside its own async frame -- outside any try/catch of ours, so
+    // it surfaces as an unhandled rejection and takes the process down. One
+    // closed tab killed the server for every other client.
+    //
+    // Leaving them unsettled means canUseTool simply never returns. That is
+    // correct here: the query is aborted, nothing will ever read the answer,
+    // and the whole session is discarded.
+    if (!this.abort.signal.aborted) this.abort.abort();
     this.pendingQuestions.clear();
     this.queue.close();
-    // Order matters: close the queue first so a generator that IS waiting
-    // unwinds cleanly, then abort to kill a CLI that is not reading from it.
-    if (!this.abort.signal.aborted) this.abort.abort();
     void this.snapshot();
   }
 
