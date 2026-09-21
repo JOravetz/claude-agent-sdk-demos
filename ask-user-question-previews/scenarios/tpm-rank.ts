@@ -36,6 +36,7 @@ export const tpmRank: Scenario = {
     "decisions that change what the table shows, and show me what each choice " +
     "costs and buys.",
   previewStyle: "hybrid",
+  tools: ["AskUserQuestion"],
   designPrompt: (seed) =>
     "Stop gathering. Continue to Design: first give me the final invocation " +
     "and the per-flag rationale, then the phase 2 HTML dashboard document.\n\n" +

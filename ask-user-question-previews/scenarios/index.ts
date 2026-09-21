@@ -11,6 +11,12 @@ export type Scenario = {
   systemPrompt: string;
   previewStyle: PreviewStyle;
   /**
+   * Tools this scenario may use, beyond the SDK plumbing. Scenarios that show
+   * real-world imagery need to go and find it; tpm-rank must not, since its
+   * numbers may only come from its evidence tables.
+   */
+  tools: string[];
+  /**
    * Instruction pushed when the user presses "Continue to Design".
    *
    * This belongs to the scenario, not the session. It used to be one hardcoded

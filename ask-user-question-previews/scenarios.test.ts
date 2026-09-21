@@ -62,15 +62,26 @@ test("both scenarios steer away from the retired Unsplash source API", () => {
   }
 });
 
-test("branding permits imagery; tpm-rank forbids it", () => {
-  assert.match(SCENARIOS.branding.systemPrompt, /picsum\.photos/);
+test("branding sources real imagery by searching; tpm-rank forbids images", () => {
+  const branding = SCENARIOS.branding.systemPrompt;
+  assert.match(branding, /WebSearch/, "branding should be told to search");
+  assert.match(branding, /upload\.wikimedia\.org/, "should prefer a stable host");
+  assert.match(branding, /loremflickr/, "should name a fallback");
+  assert.match(branding, /Never guess or construct an image URL/i);
+
   // tpm-rank's ban sits in the system prompt, which is in force for the whole
   // conversation, so it covers the design turn too.
   assert.match(
     SCENARIOS["tpm-rank"].systemPrompt,
     /No external fonts, scripts, or images/i,
   );
-  assert.ok(!SCENARIOS["tpm-rank"].systemPrompt.includes("picsum.photos"));
+  assert.ok(!/loremflickr|wikimedia/i.test(SCENARIOS["tpm-rank"].systemPrompt));
+});
+
+test("only branding may reach the network", () => {
+  assert.deepEqual(SCENARIOS["tpm-rank"].tools, ["AskUserQuestion"]);
+  assert.ok(SCENARIOS.branding.tools.includes("WebSearch"));
+  assert.ok(SCENARIOS.branding.tools.includes("AskUserQuestion"));
 });
 
 test("getScenario falls back to the default for an unknown id", () => {

@@ -302,7 +302,7 @@ export class Session {
           thinking: { type: "enabled", budgetTokens: 4000 },
           systemPrompt: this.scenario.systemPrompt,
           permissionMode: "default",
-          tools: ["AskUserQuestion"],
+          tools: this.scenario.tools,
           toolConfig: { askUserQuestion: { previewFormat: "html" } },
           stderr: (data: string) => {
             process.stderr.write(`[cli] ${data}`);
@@ -313,7 +313,13 @@ export class Session {
             if (toolName === "ToolSearch" || toolName === "ExitPlanMode") {
               return { behavior: "allow", updatedInput: input };
             }
+            // Anything the scenario declared is allowed through untouched;
+            // only AskUserQuestion needs the browser round trip below.
             if (toolName !== "AskUserQuestion") {
+              if (this.scenario.tools.includes(toolName)) {
+                this.send({ type: "status", text: `${toolName}...` });
+                return { behavior: "allow", updatedInput: input };
+              }
               return {
                 behavior: "deny",
                 message:
