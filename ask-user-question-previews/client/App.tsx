@@ -133,7 +133,14 @@ export function App() {
           </div>
         ) : null}
 
-        {design && phase === "design" && <DesignPane html={design} />}
+        {design && phase === "design" && (
+          <DesignPane
+            html={design}
+            label={
+              scenario === "tpm-rank" ? "Designed tpm-rank view" : "Designed page"
+            }
+          />
+        )}
       </section>
     </main>
   );
