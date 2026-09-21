@@ -58,6 +58,7 @@ help:
     @printf '    sessions     List stored session snapshots\n'
     @printf '    ps           Show running demo processes\n\n'
     @printf '  \033[1mCLEAN\033[0m\n'
+    @printf '    prune        Remove empty session snapshots   [-a --all]\n'
     @printf '    clean        Remove .sessions and .dev.log\n'
     @printf '    distclean    Also remove node_modules\n\n'
     @printf '  Every argument-taking recipe answers -h / --help.\n'
@@ -413,7 +414,9 @@ sessions:
             const d = JSON.parse(require('fs').readFileSync('$f','utf8'));
             const store = d.version ? d.picks : d;
             const live = store.picks.filter(p => !p.supersededBy).length;
-            const saved = d.design ? 'design' : (d.deliverable ? 'text' : '-');
+            const designs = (d.designs || []).length + (d.design ? 1 : 0);
+            const texts = (d.deliverables || []).length + (d.deliverable ? 1 : 0);
+            const saved = [designs ? designs + 'd' : '', texts ? texts + 't' : ''].filter(Boolean).join('+') || '-';
             console.log([d.scenario ?? '?', live, d.phase ?? 'gather', saved].join(' '));
           } catch { console.log('? ? ? ?'); }")
         printf '%-38s %-10s %5s %6s %9s  %s\n' "$(basename "$f" .json)" "${scenario}" "${n}" "${phase}" "${saved}" "$(date -r "$f" '+%Y-%m-%d %H:%M')"
@@ -446,6 +449,40 @@ ps:
 # ═══════════════════════════════════════════════════════════════════════════════
 # CLEAN
 # ═══════════════════════════════════════════════════════════════════════════════
+
+# Remove empty session snapshots (add --all to remove every session)
+prune *ARGS:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    set -- {{ ARGS }}
+    all=0
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -a|--all) all=1; shift ;;
+            -h|--help)
+                echo "just prune [-a|--all]   drop empty snapshots, or every snapshot"
+                exit 0 ;;
+            *) echo "unknown option: $1" >&2; exit 2 ;;
+        esac
+    done
+    cd "{{ project_dir }}"
+    [[ -d .sessions ]] || { echo "no sessions"; exit 0; }
+    n=0
+    for f in .sessions/*.json; do
+        [[ -e "$f" ]] || continue
+        if (( all )); then rm -f "$f"; n=$((n+1)); continue
+        fi
+        keep=$(node -e "
+          try {
+            const d = JSON.parse(require('fs').readFileSync('$f','utf8'));
+            const store = d.version ? d.picks : d;
+            const picks = store.picks.filter(p => !p.supersededBy).length;
+            const has = picks > 0 || (d.designs||[]).length || (d.deliverables||[]).length || d.design || d.deliverable;
+            console.log(has ? 'keep' : 'drop');
+          } catch { console.log('drop'); }")
+        if [[ "$keep" == "drop" ]]; then rm -f "$f"; n=$((n+1)); fi
+    done
+    echo "removed ${n} snapshot(s); $(ls .sessions/*.json 2>/dev/null | wc -l | tr -d ' ') remain"
 
 # Remove session snapshots and the dev log
 clean:

@@ -38,7 +38,9 @@ type Snapshot = {
   scenario: string;
   phase: Phase;
   picks: PickStoreData;
-  /** Last assistant text block: the brand guide, the invocation, etc. */
+  /** Substantial assistant text blocks, oldest first: brand guides, invocations. */
+  deliverables?: string[];
+  /** Pre-migration single block; read, never written. */
   deliverable?: string;
   /** Every phase-2 HTML document, oldest first. */
   designs?: string[];
@@ -80,6 +82,19 @@ export function stripPreviews<T extends { options: Array<Record<string, unknown>
   }));
 }
 
+/**
+ * Is this assistant text an artifact worth storing, or conversational filler?
+ *
+ * Deliverables are documents - brand guides, invocations, specs - and run to
+ * kilobytes with markdown structure. Greetings and acknowledgements do not.
+ */
+export function isDeliverable(text: string): boolean {
+  const trimmed = text.trim();
+  if (trimmed.length < 1500) return false;
+  const structure = (trimmed.match(/^#{1,4} |^\| |^- |^\d+\. /gm) || []).length;
+  return structure >= 5;
+}
+
 /** Pull one fenced ```html block out of a markdown text block. */
 export function extractHtmlBlock(text: string): string | null {
   const match = text.match(/```html\s*\n([\s\S]*?)```/);
@@ -99,7 +114,7 @@ export class Session {
   >();
   private running = false;
   private stderrLines: string[] = [];
-  private deliverable?: string;
+  private deliverables: string[] = [];
   private designs: string[] = [];
   /**
    * Aborting is what actually stops the spawned CLI. Closing the queue only
@@ -137,8 +152,13 @@ export class Session {
       if ("version" in parsed) {
         session.picks = PickStore.fromObject(parsed.picks);
         session.phase = parsed.phase;
-        session.deliverable = parsed.deliverable;
-        // Older snapshots held a single design; carry it forward as a list.
+        // Older snapshots held single values; carry them forward as lists.
+        // Filter on the way in as well as the way out. Snapshots written
+        // before isDeliverable existed can hold a greeting where a brand guide
+        // belongs; carrying that forward would perpetuate the bug's artifact.
+        session.deliverables = (
+          parsed.deliverables ?? (parsed.deliverable ? [parsed.deliverable] : [])
+        ).filter(isDeliverable);
         session.designs =
           parsed.designs ?? (parsed.design ? [parsed.design] : []);
       } else {
@@ -152,12 +172,23 @@ export class Session {
   }
 
   private async snapshot(): Promise<void> {
+    // A session with nothing in it is not worth a file. Every page load mints
+    // an id, and writing unconditionally left 55 empty snapshots out of 61.
+    if (
+      this.picks.current().length === 0 &&
+      this.deliverables.length === 0 &&
+      this.designs.length === 0
+    ) {
+      return;
+    }
     const doc: Snapshot = {
       version: 1,
       scenario: this.scenario.id,
       phase: this.phase,
       picks: this.picks.toObject(),
-      ...(this.deliverable ? { deliverable: this.deliverable } : {}),
+      ...(this.deliverables.length
+        ? { deliverables: this.deliverables }
+        : {}),
       ...(this.designs.length ? { designs: this.designs } : {}),
     };
     try {
@@ -246,8 +277,8 @@ export class Session {
   get picksForTest(): Pick[] {
     return this.picks.current();
   }
-  get deliverableForTest(): string | undefined {
-    return this.deliverable;
+  get deliverablesForTest(): string[] {
+    return this.deliverables;
   }
   get designsForTest(): string[] {
     return this.designs;
@@ -278,9 +309,7 @@ export class Session {
     // but the artifact did, and a resumed session that showed nothing would be
     // indistinguishable from a lost one.
     if (this.phase === "design") this.send({ type: "phase", phase: this.phase });
-    if (this.deliverable) {
-      this.send({ type: "text", text: this.deliverable });
-    }
+    for (const text of this.deliverables) this.send({ type: "text", text });
     for (const html of this.designs) this.send({ type: "design", html });
 
     const queue = this.queue;
@@ -371,9 +400,11 @@ export class Session {
                 this.designs.push(html);
                 this.send({ type: "design", html });
               }
-              // Keep the last substantial text: that is the deliverable, and
-              // losing it when the tab closes is what made resume a half-promise.
-              if (block.text.trim().length > 200) this.deliverable = block.text;
+              // Keep substantial text as a deliverable, appended rather than
+              // replacing. "Last one over 200 chars wins" let a chatty
+              // "Welcome back!" clobber a 9KB brand guide the user had waited
+              // for. A real artifact is markdown of some size; greetings are not.
+              if (isDeliverable(block.text)) this.deliverables.push(block.text);
               this.send({ type: "text", text: block.text });
             }
             if (block.type === "thinking") {

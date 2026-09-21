@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   extractHtmlBlock,
+  isDeliverable,
   isValidSessionId,
   Session,
   stripPreviews,
@@ -75,6 +76,19 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 
+
+/** A stand-in for a real deliverable: structured markdown of realistic size. */
+function guideFixture(title: string): string {
+  return (
+    `# ${title}\n\n## Colours\n\n| Name | Hex |\n| --- | --- |\n` +
+    "| Deep Forest | #1F2B25 |\n| Jade | #4A7C65 |\n\n## Typography\n\n" +
+    "- Display: Cormorant Garamond\n- Body: Inter\n- Labels: Tenor Sans\n\n" +
+    "## Spacing\n\n1. 8px base\n2. 24px gutter\n3. 96px sections\n\n" +
+    "## Notes\n\n" +
+    "Every piece is documented and authenticated. ".repeat(40)
+  );
+}
+
 async function withSnapshot(
   body: string,
   fn: (id: string) => Promise<void>,
@@ -101,7 +115,7 @@ test("rehydrate restores picks, phase and the deliverable", async () => {
         { id: "p1", header: "Vibe", question: "Which vibe?", label: "Editorial", description: "d" },
       ],
     },
-    deliverable: "# Brand Guide\n\nDeep Forest #1F2B25",
+    deliverables: [guideFixture("Brand Guide")],
     designs: ["<h1>mock</h1>"],
   });
 
@@ -111,7 +125,8 @@ test("rehydrate restores picks, phase and the deliverable", async () => {
     assert.equal(session.phase, "design");
     assert.equal(session.picksForTest.length, 1);
     assert.equal(session.picksForTest[0].label, "Editorial");
-    assert.match(session.deliverableForTest ?? "", /Deep Forest/);
+    assert.match(session.deliverablesForTest[0] ?? "", /Deep Forest/);
+    assert.equal(session.deliverablesForTest.length, 1);
     assert.deepEqual(session.designsForTest, ["<h1>mock</h1>"]);
   });
 });
@@ -128,7 +143,7 @@ test("rehydrate still reads a legacy picks-only snapshot", async () => {
     const session = await Session.rehydrate(id, "branding", () => {});
     assert.equal(session.picksForTest.length, 1);
     assert.equal(session.phase, "gather");
-    assert.equal(session.deliverableForTest, undefined);
+    assert.deepEqual(session.deliverablesForTest, []);
   });
 });
 
@@ -223,5 +238,61 @@ test("multiple designs accumulate rather than replacing each other", async () =>
     const session = await Session.rehydrate(id, "branding", () => {});
     assert.equal(session.designsForTest.length, 2);
     assert.equal(session.designsForTest[1], "<h1>two</h1>");
+  });
+});
+
+// --- what counts as a deliverable ----------------------------------------
+// The bug: "last assistant text over 200 chars wins" let a "Welcome back!"
+// message overwrite a 9KB brand guide the user had waited minutes for.
+test("a chatty greeting is not a deliverable", () => {
+  const greeting =
+    "Welcome back! I can see you have a beautifully refined aesthetic " +
+    "direction already locked in - The Connoisseur vibe with Lacquer & Gold " +
+    "palette and Colonial Scholar typography. That's a rich, authoritative, " +
+    "old-world-meets-digital sensibility. Before I show you visual options, " +
+    "I need to ask about a couple more things first, so bear with me.";
+  assert.equal(isDeliverable(greeting), false);
+});
+
+test("a structured document is a deliverable", () => {
+  const guide =
+    "# Brand Guide\n\n## Colours\n\n| Name | Hex |\n| --- | --- |\n" +
+    "| Ink | #1A1A18 |\n| Jade | #3C6B5C |\n\n## Typography\n\n" +
+    "- Display: Cormorant Garamond\n- Body: Inter\n- Labels: Tenor Sans\n" +
+    "\n## Spacing\n\n1. 8px base\n2. 16px gutter\n3. 96px sections\n" +
+    "x".repeat(1500);
+  assert.equal(isDeliverable(guide), true);
+});
+
+test("long unstructured prose is not mistaken for a document", () => {
+  assert.equal(isDeliverable("word ".repeat(600)), false);
+});
+
+test("a pre-migration single deliverable is carried forward", async () => {
+  const legacy = JSON.stringify({
+    version: 1,
+    scenario: "branding",
+    phase: "gather",
+    picks: { nextId: 1, picks: [] },
+    deliverable: guideFixture("Old Guide"),
+  });
+  await withSnapshot(legacy, async (id) => {
+    const session = await Session.rehydrate(id, "branding", () => {});
+    assert.equal(session.deliverablesForTest.length, 1);
+    assert.match(session.deliverablesForTest[0], /Old Guide/);
+  });
+});
+
+test("a greeting stored by the old code is dropped on migration", async () => {
+  const stale = JSON.stringify({
+    version: 1,
+    scenario: "branding",
+    phase: "design",
+    picks: { nextId: 1, picks: [] },
+    deliverable: "Welcome back! I can see you have a refined direction already.",
+  });
+  await withSnapshot(stale, async (id) => {
+    const session = await Session.rehydrate(id, "branding", () => {});
+    assert.deepEqual(session.deliverablesForTest, []);
   });
 });
