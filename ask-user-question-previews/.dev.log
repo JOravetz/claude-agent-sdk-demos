@@ -69,3 +69,6 @@ npm notice run concurrently "npm:dev:server" "npm:dev:client"
 [dev:server] 7:14:10 PM [tsx] change in ./session.ts Restarting...
 [dev:server] cAuth: Claude CLI login (run `claude login` if this fails).
 [dev:server] server on :3001, ws at /ws
+[dev:server] 7:30:04 PM [tsx] change in ./session.ts Restarting...
+[dev:server] cAuth: Claude CLI login (run `claude login` if this fails).
+[dev:server] server on :3001, ws at /ws

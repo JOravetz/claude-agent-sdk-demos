@@ -1,6 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { extractHtmlBlock, isValidSessionId, Session } from "./session.js";
+import {
+  extractHtmlBlock,
+  isValidSessionId,
+  Session,
+  stripPreviews,
+} from "./session.js";
 
 test("extracts a fenced html block", () => {
   const text = "Here you go:\n\n```html\n<h1>Hi</h1>\n```\n\nEnjoy.";
@@ -132,4 +137,62 @@ test("rehydrate survives a corrupt snapshot", async () => {
     const session = await Session.rehydrate(id, "branding", () => {});
     assert.equal(session.picksForTest.length, 0);
   });
+});
+
+// --- preview stripping ----------------------------------------------------
+test("stripPreviews removes preview HTML but keeps everything else", () => {
+  const questions = [
+    {
+      question: "Which vibe?",
+      header: "Vibe",
+      options: [
+        { label: "A", description: "first", preview: "<div>huge</div>" },
+        { label: "B", description: "second", preview: "<div>also huge</div>" },
+      ],
+    },
+  ];
+
+  const lean = stripPreviews(questions);
+  assert.equal(lean[0].question, "Which vibe?");
+  assert.equal(lean[0].header, "Vibe");
+  assert.equal(lean[0].options.length, 2);
+  assert.equal(lean[0].options[0].label, "A");
+  assert.equal(lean[0].options[0].description, "first");
+  assert.ok(!("preview" in lean[0].options[0]));
+  assert.ok(!("preview" in lean[0].options[1]));
+});
+
+test("stripPreviews does not mutate the caller's questions", () => {
+  const questions = [
+    { question: "q", header: "h", options: [{ label: "A", description: "d", preview: "<p>x</p>" }] },
+  ];
+  stripPreviews(questions);
+  assert.equal(questions[0].options[0].preview, "<p>x</p>");
+});
+
+test("stripPreviews is a large saving on a realistic question", () => {
+  const preview = "<div style='padding:20px'>".repeat(60) + "</div>".repeat(60);
+  const questions = [
+    {
+      question: "Which palette?",
+      header: "Palette",
+      options: Array.from({ length: 4 }, (_, i) => ({
+        label: `Option ${i}`,
+        description: "a short description",
+        preview,
+      })),
+    },
+  ];
+
+  const before = JSON.stringify(questions).length;
+  const after = JSON.stringify(stripPreviews(questions)).length;
+  assert.ok(after < before / 10, `expected >90% saving, got ${before} -> ${after}`);
+});
+
+test("stripPreviews copes with options that never had a preview", () => {
+  const questions = [
+    { question: "q", header: "h", options: [{ label: "A", description: "d" }] },
+  ];
+  const lean = stripPreviews(questions);
+  assert.equal(lean[0].options[0].label, "A");
 });

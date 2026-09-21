@@ -59,6 +59,25 @@ export function isValidSessionId(id: string): boolean {
   return SESSION_ID.test(id);
 }
 
+/**
+ * Drop `preview` from every option before the tool result goes back to the
+ * model.
+ *
+ * The preview HTML exists for the browser. Returning it in updatedInput puts
+ * the full markup of every option of every question into the conversation for
+ * the rest of the session -- on a 19-question run that is hundreds of
+ * kilobytes of HTML the model wrote itself and does not need to re-read. It
+ * made later turns crawl, and a design turn on top of it stalled outright.
+ */
+export function stripPreviews<T extends { options: Array<Record<string, unknown>> }>(
+  questions: T[],
+): T[] {
+  return questions.map((q) => ({
+    ...q,
+    options: q.options.map(({ preview: _preview, ...rest }) => rest),
+  }));
+}
+
 /** Pull one fenced ```html block out of a markdown text block. */
 export function extractHtmlBlock(text: string): string | null {
   const match = text.match(/```html\s*\n([\s\S]*?)```/);
@@ -316,7 +335,10 @@ export class Session {
               this.emitPicks();
             }
             this.send({ type: "status", text: "applying your choices..." });
-            return { behavior: "allow", updatedInput: { questions, answers } };
+            return {
+              behavior: "allow",
+              updatedInput: { questions: stripPreviews(questions), answers },
+            };
           },
         },
       })) {
