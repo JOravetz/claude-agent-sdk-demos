@@ -28,12 +28,18 @@ const DEFAULT_PROMPTS: Record<string, string> = {
 
 export function App() {
   const {
-    log, pending, picks, history, phase, designs, queued,
+    log, pending, picks, history, phase, designs, queued, restoredPrompt,
     status, busy, connected,
     submit, answer, amend, say, askMore, toDesign,
   } = useAgentSocket("ws://localhost:3001/ws");
 
   const [scenario, setScenario] = useState("branding");
+
+  // A resumed session reports the brief it started with; adopt it so the
+  // textarea matches the picks on screen.
+  useEffect(() => {
+    if (restoredPrompt) setPrompt(restoredPrompt);
+  }, [restoredPrompt]);
 
   const [prompt, setPrompt] = useState(DEFAULT_PROMPTS.branding);
 

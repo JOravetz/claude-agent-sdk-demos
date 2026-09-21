@@ -38,6 +38,9 @@ export function useAgentSocket(url: string) {
   const [designs, setDesigns] = useState<string[]>([]);
   // Intents pressed while the agent was mid-turn, shown as pending.
   const [queued, setQueued] = useState<string[]>([]);
+  // The prompt the server says this session began with, so a reload does
+  // not silently revert the textarea to the scenario default.
+  const [restoredPrompt, setRestoredPrompt] = useState<string | null>(null);
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
   const [connected, setConnected] = useState(false);
@@ -64,6 +67,7 @@ export function useAgentSocket(url: string) {
             } catch {
               // Private mode or blocked storage: the session just won't resume.
             }
+            if (msg.prompt) setRestoredPrompt(msg.prompt);
             return;
           case "status":
             return setStatus(msg.text);
@@ -166,6 +170,7 @@ export function useAgentSocket(url: string) {
     history,
     phase,
     designs,
+    restoredPrompt,
     queued,
     status,
     busy,

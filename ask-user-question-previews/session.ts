@@ -11,7 +11,7 @@ import { getScenario, type Scenario } from "./scenarios/index.js";
 export type Phase = "gather" | "design";
 
 export type Outbound =
-  | { type: "session"; id: string; scenario: string }
+  | { type: "session"; id: string; scenario: string; prompt?: string }
   | { type: "status"; text: string }
   | { type: "question"; id: string; question: unknown }
   | { type: "text"; text: string }
@@ -38,6 +38,13 @@ type Snapshot = {
   scenario: string;
   phase: Phase;
   picks: PickStoreData;
+  /**
+   * The prompt that opened the session. Without this a reload silently reverts
+   * the textarea to the scenario default, and resuming sends that default into
+   * a session about something else entirely - a furniture brand asked what its
+   * SaaS product does.
+   */
+  prompt?: string;
   /** Substantial assistant text blocks, oldest first: brand guides, invocations. */
   deliverables?: string[];
   /** Pre-migration single block; read, never written. */
@@ -115,6 +122,7 @@ export class Session {
   private running = false;
   private stderrLines: string[] = [];
   private deliverables: string[] = [];
+  private prompt?: string;
   private designs: string[] = [];
   /**
    * Aborting is what actually stops the spawned CLI. Closing the queue only
@@ -152,6 +160,7 @@ export class Session {
       if ("version" in parsed) {
         session.picks = PickStore.fromObject(parsed.picks);
         session.phase = parsed.phase;
+        session.prompt = parsed.prompt;
         // Older snapshots held single values; carry them forward as lists.
         // Filter on the way in as well as the way out. Snapshots written
         // before isDeliverable existed can hold a greeting where a brand guide
@@ -186,6 +195,7 @@ export class Session {
       scenario: this.scenario.id,
       phase: this.phase,
       picks: this.picks.toObject(),
+      ...(this.prompt ? { prompt: this.prompt } : {}),
       ...(this.deliverables.length
         ? { deliverables: this.deliverables }
         : {}),
@@ -277,6 +287,9 @@ export class Session {
   get picksForTest(): Pick[] {
     return this.picks.current();
   }
+  get promptForTest(): string | undefined {
+    return this.prompt;
+  }
   get deliverablesForTest(): string[] {
     return this.deliverables;
   }
@@ -292,18 +305,28 @@ export class Session {
     }
     this.running = true;
 
+    // A resumed session keeps its original prompt; the incoming one is the
+    // client's default and would change the subject.
+    const opening = this.prompt ?? firstPrompt;
+    if (!this.prompt) this.prompt = firstPrompt;
+
     const restored = this.picks.current();
     if (restored.length > 0) {
       this.say(
         "Picks restored from a previous run (the conversation itself did not " +
           "survive): " +
           restored.map((p) => `${p.header} = ${p.label}`).join("; ") +
-          `. ${firstPrompt}`,
+          `. The original brief was: ${opening}`,
       );
     } else {
-      this.say(firstPrompt);
+      this.say(opening);
     }
-    this.send({ type: "session", id: this.id, scenario: this.scenario.id });
+    this.send({
+      type: "session",
+      id: this.id,
+      scenario: this.scenario.id,
+      prompt: opening,
+    });
     this.emitPicks();
     // Show what the previous run produced. The conversation did not survive,
     // but the artifact did, and a resumed session that showed nothing would be

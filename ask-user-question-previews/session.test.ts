@@ -296,3 +296,40 @@ test("a greeting stored by the old code is dropped on migration", async () => {
     assert.deepEqual(session.deliverablesForTest, []);
   });
 });
+
+// --- the opening brief travels with the session ---------------------------
+// The bug: a reload reset the textarea to the scenario default, and resuming
+// sent that default into a session about something else. A furniture brand
+// was asked what its SaaS product does.
+test("a resumed session keeps its original brief", async () => {
+  const snapshot = JSON.stringify({
+    version: 1,
+    scenario: "branding",
+    phase: "gather",
+    picks: {
+      nextId: 2,
+      picks: [
+        { id: "p1", header: "Vibe", question: "Which vibe?", label: "The Connoisseur", description: "d" },
+      ],
+    },
+    prompt: "Brand a store selling antique furniture from Singapore",
+  });
+
+  await withSnapshot(snapshot, async (id) => {
+    const sent: Array<Record<string, unknown>> = [];
+    const session = await Session.rehydrate(id, "branding", (p) =>
+      sent.push(p as Record<string, unknown>),
+    );
+    assert.match(session.promptForTest ?? "", /antique furniture/);
+
+    // Tearing down before start() keeps the test off the network; the point is
+    // that the stored brief is what start() would use, not the incoming one.
+    session.close();
+    assert.match(session.promptForTest ?? "", /antique furniture/);
+  });
+});
+
+test("a fresh session adopts the prompt it was started with", () => {
+  const session = new Session("branding", () => {});
+  assert.equal(session.promptForTest, undefined);
+});
