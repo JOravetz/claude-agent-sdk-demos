@@ -372,10 +372,6 @@ ${manifestBlock}
           }
         }
       }
-      if (msg.type === 'result' && msg.subtype === 'tool_result') {
-        const resultStr = JSON.stringify(msg.content).slice(0, 200);
-        console.log(`   ↳ Result: ${resultStr}${resultStr.length >= 200 ? '...' : ''}`);
-      }
     }
   } finally {
     rl.close();
