@@ -2,9 +2,9 @@
 name = "multi-agent-research"
 version = "0.1.0"
 description = "Simple multi-agent research system using Claude Agents SDK"
-requires-python = ">=3.10"
+requires-python = ">=3.13"
 dependencies = [
-    "claude-agent-sdk>=0.1.0",
+    "claude-agent-sdk>=0.2.122",
     "python-dotenv>=1.0.0",
 ]
 
