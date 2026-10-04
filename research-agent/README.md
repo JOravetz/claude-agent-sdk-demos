@@ -21,9 +21,10 @@ Then ask: "Research quantum computing developments in 2025"
 
 1. **Lead Agent** breaks your request into 2-4 subtopics
 2. Spawns **Researcher** subagents in parallel to search the web
-3. Each Researcher saves findings to `files/research_notes/`
-4. Spawns **Data Analyst** to extract metrics and generate charts in `files/charts/`
-5. Spawns **Report Writer** to create final PDF report in `files/reports/`
+3. Each Researcher saves findings to `files/research_notes/`, with a source URL and as-of date on every figure
+4. Spawns **Fact Checker** to cross-check the notes, re-verify key figures against their sources, and write `files/fact_check/`
+5. Spawns **Data Analyst** to chart only verified facts in `files/charts/`
+6. Spawns **Report Writer** to create the final PDF report, with a verification section, in `files/reports/`
 
 ## Agents
 
@@ -31,6 +32,7 @@ Then ask: "Research quantum computing developments in 2025"
 |-------|-------|---------|
 | **Lead Agent** | `Task` | Coordinates research, delegates to subagents |
 | **Researcher** | `WebSearch`, `Write` | Gathers information from the web |
+| **Fact Checker** | `Glob`, `Read`, `WebFetch`, `WebSearch`, `Bash`, `Write` | Verifies findings against sources before they are used |
 | **Data Analyst** | `Glob`, `Read`, `Bash`, `Write` | Extracts metrics, generates charts |
 | **Report Writer** | `Skill`, `Write`, `Glob`, `Read`, `Bash` | Creates PDF reports with embedded visuals |
 
@@ -56,6 +58,7 @@ Then ask: "Research quantum computing developments in 2025"
 ```
 files/
 ├── research_notes/     # Markdown files from researchers
+├── fact_check/         # verified_facts.md and ledger.md from the fact checker
 ├── data/               # Data summaries from analyst
 ├── charts/             # PNG visualizations
 └── reports/            # Final PDF reports

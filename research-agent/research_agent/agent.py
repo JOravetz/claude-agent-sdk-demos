@@ -5,6 +5,7 @@ import json
 import os
 import shutil
 import subprocess
+from datetime import datetime
 from pathlib import Path
 
 from claude_agent_sdk import (
@@ -45,10 +46,15 @@ def claude_login_active() -> bool:
 
 
 def load_prompt(filename: str) -> str:
-    """Load a prompt from the prompts directory."""
+    """Load a prompt from the prompts directory, headed with today's date.
+
+    Without the date, agents cannot tell a reported result from a projection
+    and have presented "final" totals for periods that had not ended.
+    """
     prompt_path = PROMPTS_DIR / filename
     with open(prompt_path, "r", encoding="utf-8") as f:
-        return f.read().strip()
+        body = f.read().strip()
+    return f"Today's date is {datetime.now().astimezone().date().isoformat()}.\n\n{body}"
 
 
 # How long to keep listening after the last background task finishes, for the
@@ -114,6 +120,7 @@ async def chat():
     # Load prompts
     lead_agent_prompt = load_prompt("lead_agent.txt")
     researcher_prompt = load_prompt("researcher.txt")
+    fact_checker_prompt = load_prompt("fact_checker.txt")
     data_analyst_prompt = load_prompt("data_analyst.txt")
     report_writer_prompt = load_prompt("report_writer.txt")
 
@@ -134,10 +141,22 @@ async def chat():
             prompt=researcher_prompt,
             model="haiku"
         ),
+        "fact-checker": AgentDefinition(
+            description=(
+                "Use this agent AFTER all researchers finish and BEFORE the data-analyst. "
+                "The fact-checker reads every note in files/research_notes/, cross-checks the notes "
+                "against each other, re-fetches cited sources to confirm each key figure, recomputes "
+                "derived numbers, and writes files/fact_check/verified_facts.md and files/fact_check/ledger.md. "
+                "Downstream agents may use only facts it marks CONFIRMED or CORRECTED."
+            ),
+            tools=["Glob", "Read", "WebFetch", "WebSearch", "Bash", "Write"],
+            prompt=fact_checker_prompt,
+            model="sonnet"
+        ),
         "data-analyst": AgentDefinition(
             description=(
-                "Use this agent AFTER researchers have completed their work to generate quantitative "
-                "analysis and visualizations. The data-analyst reads research notes from files/research_notes/, "
+                "Use this agent AFTER the fact-checker has finished to generate quantitative "
+                "analysis and visualizations. The data-analyst reads files/fact_check/verified_facts.md, "
                 "extracts numerical data (percentages, rankings, trends, comparisons), and generates "
                 "charts using Python/matplotlib via Bash. Saves charts to files/charts/ and writes "
                 "a data summary to files/data/. Use this before the report-writer to add visual insights."
@@ -149,7 +168,7 @@ async def chat():
         "report-writer": AgentDefinition(
             description=(
                 "Use this agent when you need to create a formal research report document. "
-                "The report-writer reads research findings from files/research_notes/, data analysis "
+                "The report-writer reads verified facts from files/fact_check/, research findings from files/research_notes/, data analysis "
                 "from files/data/, and charts from files/charts/, then synthesizes them into clear, "
                 "concise, professionally formatted PDF reports in files/reports/ using reportlab. "
                 "Ideal for creating structured documents with proper citations, data, and embedded visuals. "
