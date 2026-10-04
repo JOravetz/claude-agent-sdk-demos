@@ -186,7 +186,8 @@ function createCanUseToolHandler(rl: readline.Interface) {
       multiSelect?: boolean;
     }>;
 
-    const answers: string[] = [];
+    // Keyed by question text, the shape the AskUserQuestion tool expects.
+    const answers: Record<string, string> = {};
     console.log('\n' + '─'.repeat(60));
     console.log(isTty
       ? '🤔 Claude needs your input:'
@@ -204,7 +205,7 @@ function createCanUseToolHandler(rl: readline.Interface) {
         const idx = recIdx >= 0 ? recIdx : 0;
         const tag = recIdx >= 0 ? '(Recommended)' : '(first option — no Recommended found)';
         console.log(`  → auto-selected #${idx + 1} ${tag}: ${q.options[idx].label}`);
-        answers.push(q.options[idx].label);
+        answers[q.question] = q.options[idx].label;
         continue;
       }
 
@@ -212,12 +213,12 @@ function createCanUseToolHandler(rl: readline.Interface) {
       const reply = (await rl.question('> ')).trim();
       const idx = parseInt(reply, 10) - 1;
       if (!isNaN(idx) && idx >= 0 && idx < q.options.length) {
-        answers.push(q.options[idx].label);
+        answers[q.question] = q.options[idx].label;
       } else if (!isNaN(idx) && idx === q.options.length) {
         const custom = (await rl.question('Your answer: ')).trim();
-        answers.push(custom || 'No answer');
+        answers[q.question] = custom || 'No answer';
       } else {
-        answers.push(reply || 'No answer');
+        answers[q.question] = reply || 'No answer';
       }
     }
     console.log('─'.repeat(60) + '\n');
@@ -304,8 +305,9 @@ ${manifestBlock}
         maxTurns: 50,
         cwd,
         model: 'sonnet',
-        // Lead agent has no direct web access — that's the researcher's job.
-        allowedTools: ['Task', 'AskUserQuestion', 'Skill', 'Bash', 'Write', 'Read', 'Edit', 'Glob'],
+        // No allowedTools: a tool listed there is auto-approved before
+        // canUseTool runs, which would skip the AskUserQuestion round-trip.
+        // canUseTool approves every other tool itself.
         settingSources: ['project'],
         systemPrompt: leadSystemPrompt(pages, expectedPath, cwd),
         agents: {
