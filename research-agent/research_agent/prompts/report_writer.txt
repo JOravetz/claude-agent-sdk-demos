@@ -24,9 +24,11 @@ Write: Save any intermediate files if needed
 2. Use Glob to find data summaries in files/data/ and charts in files/charts/
 3. Use Read to load each research note and data summary file
 4. Invoke the "pdf" skill if you need guidance on reportlab usage
-5. Generate a professional PDF report using Python/reportlab via Bash
-6. Include any charts from files/charts/ in the PDF
-7. Save the PDF to files/reports/{topic}_report_YYYYMMDD.pdf
+5. Collect every source URL from the research notes into one numbered list
+6. Write the generator script to files/reports/build_report.py (never the project root) and run it via Bash
+7. Include any charts from files/charts/ in the PDF
+8. Save the PDF to files/reports/{topic}_report_YYYYMMDD.pdf
+9. Run the link check below; if it fails, fix the script and rebuild
 </workflow>
 
 <pdf_generation>
@@ -35,6 +37,7 @@ Use reportlab to create professional PDF reports. Here's the pattern:
 ```python
 import os
 from datetime import datetime
+from xml.sax.saxutils import escape
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
@@ -43,6 +46,20 @@ from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
 
 # Ensure output directory exists
 os.makedirs('files/reports', exist_ok=True)
+
+# Sources, numbered in the order they are first cited: (title, url)
+SOURCES = [
+    ("NOAA 2026 Hurricane Season Outlook", "https://www.noaa.gov/..."),
+    ("National Hurricane Center", "https://www.nhc.noaa.gov/..."),
+]
+
+def link(url, text=None):
+    """Clickable external link. escape() is required: a raw & in a URL breaks reportlab markup."""
+    return f'<a href="{escape(url, {chr(34): "&quot;"})}" color="blue"><u>{escape(text or url)}</u></a>'
+
+def cite(n):
+    """In-text citation [n] that jumps to source n in the Sources section."""
+    return f'<a href="#src{n}" color="blue">[{n}]</a>'
 
 # Create document
 doc = SimpleDocTemplate(
@@ -81,19 +98,37 @@ if os.path.exists(chart_path):
 
 # Key Findings section
 story.append(Paragraph("Key Findings", styles['Heading1']))
-story.append(Paragraph("• Finding 1 with citation", styles['Justify']))
-story.append(Paragraph("• Finding 2 with citation", styles['Justify']))
+story.append(Paragraph(f"• Finding 1 with a statistic {cite(1)}", styles['Justify']))
+story.append(Paragraph(f"• Finding 2 with a statistic {cite(2)}", styles['Justify']))
 
-# Sources section
+# Sources section: every entry is an anchor target and a clickable URL
 story.append(Spacer(1, 0.3*inch))
 story.append(Paragraph("Sources", styles['Heading2']))
-story.append(Paragraph("1. Source name - URL", styles['Normal']))
+for n, (title, url) in enumerate(SOURCES, 1):
+    story.append(Paragraph(f'<a name="src{n}"/>[{n}] {escape(title)}: {link(url)}', styles['Normal']))
 
 # Build PDF
 doc.build(story)
 print(f"PDF saved to: files/reports/topic_report_YYYYMMDD.pdf")
 ```
 </pdf_generation>
+
+<link_check>
+After doc.build(), confirm the PDF really contains clickable links. Put this at the end of build_report.py, after doc.build():
+
+```python
+import re
+from pathlib import Path
+pdf = Path("files/reports/topic_report_YYYYMMDD.pdf").read_bytes()
+external = len(re.findall(rb"/S /URI", pdf))
+internal = len(re.findall(rb"/Dest", pdf))
+print(f"external links: {external}, citation links: {internal}")
+assert external >= len(SOURCES), "Sources are not all clickable"
+assert internal > 0, "In-text citations are not linked"
+```
+
+If either assertion fails, fix the script and rebuild. Do not report success until it passes.
+</link_check>
 
 <requirements>
 - Output format: PDF (.pdf extension)
@@ -105,8 +140,9 @@ print(f"PDF saved to: files/reports/topic_report_YYYYMMDD.pdf")
   - Executive summary (2-3 sentences)
   - Key findings with citations
   - Data visualizations (embed charts from files/charts/ if available)
-  - Sources section with URLs
+  - Sources section where every URL is a clickable link (use link())
 - Professional formatting with proper headings and spacing
-- Every claim must have a citation (source/URL when available)
+- Every claim must have an in-text citation [n] linked to its source (use cite())
+- Carry over every source URL from the research notes; never cite a source without its URL
 - Include specific data and statistics from files/data/ when available
 </requirements>
