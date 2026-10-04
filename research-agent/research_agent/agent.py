@@ -1,20 +1,47 @@
 """Entry point for research agent using AgentDefinition for subagents."""
 
 import asyncio
+import json
 import os
+import shutil
+import subprocess
 from pathlib import Path
-from dotenv import load_dotenv
-from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions, AgentDefinition, HookMatcher
 
-from research_agent.utils.subagent_tracker import SubagentTracker
-from research_agent.utils.transcript import setup_session, TranscriptWriter
+from claude_agent_sdk import (
+    TERMINAL_TASK_STATUSES,
+    AgentDefinition,
+    AssistantMessage,
+    ClaudeAgentOptions,
+    ClaudeSDKClient,
+    HookMatcher,
+    ResultMessage,
+    TaskNotificationMessage,
+    TaskStartedMessage,
+    TaskUpdatedMessage,
+)
+from dotenv import load_dotenv
+
 from research_agent.utils.message_handler import process_assistant_message
+from research_agent.utils.subagent_tracker import SubagentTracker
+from research_agent.utils.transcript import TranscriptWriter, setup_session
 
 # Load environment variables
 load_dotenv()
 
 # Paths to prompt files
 PROMPTS_DIR = Path(__file__).parent / "prompts"
+
+
+def claude_login_active() -> bool:
+    """True if the Claude Code CLI reports a login the SDK can fall back to."""
+    claude = shutil.which("claude")
+    if not claude:
+        return False
+    try:
+        out = subprocess.run([claude, "auth", "status"], capture_output=True, text=True, timeout=15, check=False)
+        return bool(json.loads(out.stdout).get("loggedIn"))
+    except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError):
+        return False
 
 
 def load_prompt(filename: str) -> str:
@@ -24,14 +51,58 @@ def load_prompt(filename: str) -> str:
         return f.read().strip()
 
 
+# How long to keep listening after the last background task finishes, for the
+# lead's follow-up turn to start.
+IDLE_GRACE_SECONDS = 10
+
+
+async def stream_until_idle(client, tracker, transcript):
+    """Stream messages until the lead and every subagent it launched are done.
+
+    Subagents run as background tasks: the lead's turn ends right after it
+    spawns them, and each result comes back as a turn the session injects
+    later. Reading only to the first ResultMessage would drop the rest of the
+    pipeline, so keep reading until no tasks are active and nothing new
+    arrives for IDLE_GRACE_SECONDS.
+    """
+    active: set[str] = set()
+    idle = False
+    messages = client.receive_messages().__aiter__()
+    while True:
+        try:
+            if idle:
+                msg = await asyncio.wait_for(messages.__anext__(), IDLE_GRACE_SECONDS)
+            else:
+                msg = await messages.__anext__()
+        except (StopAsyncIteration, TimeoutError):
+            return
+
+        if isinstance(msg, AssistantMessage):
+            process_assistant_message(msg, tracker, transcript)
+        elif isinstance(msg, TaskStartedMessage):
+            active.add(msg.task_id)
+            tracker.register_task(msg.task_id, msg.tool_use_id)
+        elif isinstance(msg, TaskNotificationMessage) or (
+            isinstance(msg, TaskUpdatedMessage) and msg.status in TERMINAL_TASK_STATUSES
+        ):
+            active.discard(msg.task_id)
+
+        idle = isinstance(msg, ResultMessage) and not active
+
+
 async def chat():
     """Start interactive chat with the research agent."""
 
-    # Check API key first, before creating any files
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        print("\nError: ANTHROPIC_API_KEY not found.")
-        print("Set it in a .env file or export it in your shell.")
-        print("Get your key at: https://console.anthropic.com/settings/keys\n")
+    # Check credentials first, before creating any files. Without an API key
+    # the SDK falls back to the Claude Code CLI login.
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        print("\nAuth: ANTHROPIC_API_KEY")
+    elif claude_login_active():
+        print("\nAuth: Claude Code login (no ANTHROPIC_API_KEY set)")
+    else:
+        print("\nError: no credentials found.")
+        print("Set ANTHROPIC_API_KEY in a .env file or your shell, or log in with `claude auth login`.")
+        print("Get a key at: https://console.anthropic.com/settings/keys\n")
         return
 
     # Setup session directory and transcript
@@ -143,10 +214,8 @@ async def chat():
 
                 transcript.write("\nAgent: ", end="")
 
-                # Stream and process response
-                async for msg in client.receive_response():
-                    if type(msg).__name__ == 'AssistantMessage':
-                        process_assistant_message(msg, tracker, transcript)
+                # Stream and process response, including subagent follow-ups
+                await stream_until_idle(client, tracker, transcript)
 
                 transcript.write("\n")
     finally:

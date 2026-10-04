@@ -10,6 +10,9 @@ from collections import defaultdict
 
 logger = logging.getLogger(__name__)
 
+# Tool that spawns a subagent: "Agent" in current Claude Code, "Task" before it.
+SPAWN_TOOLS = ("Agent", "Task")
+
 
 @dataclass
 class ToolCallRecord:
@@ -41,7 +44,7 @@ class SubagentTracker:
     Tracks all tool calls made by subagents using both hooks and message stream parsing.
 
     This tracker:
-    1. Monitors the message stream to detect subagent spawns via Task tool
+    1. Monitors the message stream to detect subagent spawns via the Agent tool
     2. Uses hooks (PreToolUse/PostToolUse) to capture all tool invocations
     3. Associates tool calls with their originating subagent
     4. Logs tool usage to console and transcript files
@@ -54,8 +57,13 @@ class SubagentTracker:
         # Map: tool_use_id -> ToolCallRecord (for efficient lookup in post hook)
         self.tool_call_records: Dict[str, ToolCallRecord] = {}
 
-        # Current execution context (from message stream)
+        # Current execution context (from message stream). Only used with older
+        # CLIs whose hook inputs don't say which subagent made the call.
         self._current_parent_id: Optional[str] = None
+
+        # Map: hook agent_id (== background task_id) -> parent_tool_use_id
+        self._agent_sessions: dict[str, str] = {}
+        self._hooks_report_agent = False
 
         # Counter for each subagent type to create unique IDs
         self.subagent_counters: Dict[str, int] = defaultdict(int)
@@ -111,6 +119,35 @@ class SubagentTracker:
         logger.info(f"{'='*60}")
 
         return subagent_id
+
+    def register_task(self, task_id: str, tool_use_id: str | None):
+        """
+        Link a background task to the spawn that started it.
+
+        Subagents run as background tasks. Their hook inputs carry the task_id
+        as agent_id, and the task_started message carries the spawning tool_use_id.
+        """
+        if tool_use_id in self.sessions:
+            self._agent_sessions[task_id] = tool_use_id
+
+    def _resolve_parent(self, hook_input) -> str | None:
+        """Return the parent_tool_use_id of the subagent that made this call, or None for the lead."""
+        agent_id = hook_input.get('agent_id')
+        if agent_id:
+            self._hooks_report_agent = True
+            parent = self._agent_sessions.get(agent_id)
+            if parent is None:
+                # The hook can fire before the task_started message is read:
+                # bind to the oldest unbound spawn of the same type.
+                bound = set(self._agent_sessions.values())
+                parent = next((tid for tid, s in self.sessions.items()
+                               if s.subagent_type == hook_input.get('agent_type') and tid not in bound), None)
+                if parent:
+                    self._agent_sessions[agent_id] = parent
+            return parent
+        if self._hooks_report_agent:
+            return None
+        return self._current_parent_id if self._current_parent_id in self.sessions else None
 
     def set_current_context(self, parent_tool_use_id: Optional[str]):
         """
@@ -185,10 +222,10 @@ class SubagentTracker:
         timestamp = datetime.now().isoformat()
 
         # Determine agent context
-        is_subagent = self._current_parent_id and self._current_parent_id in self.sessions
+        parent_id = self._resolve_parent(hook_input)
 
-        if is_subagent:
-            session = self.sessions[self._current_parent_id]
+        if parent_id:
+            session = self.sessions[parent_id]
             agent_id = session.subagent_id
             agent_type = session.subagent_type
 
@@ -199,7 +236,7 @@ class SubagentTracker:
                 tool_input=tool_input,
                 tool_use_id=tool_use_id,
                 subagent_type=agent_type,
-                parent_tool_use_id=self._current_parent_id
+                parent_tool_use_id=parent_id
             )
             session.tool_calls.append(record)
             self.tool_call_records[tool_use_id] = record
@@ -214,9 +251,9 @@ class SubagentTracker:
                 "agent_type": agent_type,
                 "tool_name": tool_name,
                 "tool_input": tool_input,
-                "parent_tool_use_id": self._current_parent_id
+                "parent_tool_use_id": parent_id
             })
-        elif tool_name != 'Task':  # Skip Task calls for main agent (handled by spawn message)
+        elif tool_name not in SPAWN_TOOLS:  # Spawns are logged from the message stream
             # Main agent tool call
             self._log_tool_use("MAIN AGENT", tool_name, tool_input)
             self._log_to_jsonl({

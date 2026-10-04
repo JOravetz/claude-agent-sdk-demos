@@ -2,6 +2,8 @@
 
 from typing import Any
 
+from research_agent.utils.subagent_tracker import SPAWN_TOOLS
+
 
 # Track if a tool was just used (for formatting)
 _tool_just_used = False
@@ -35,8 +37,8 @@ def process_assistant_message(msg: Any, tracker: Any, transcript: Any) -> None:
             # Mark that a tool was used
             _tool_just_used = True
 
-            # Only handle Task tool (subagent spawning)
-            if block.name == 'Task':
+            # Only handle subagent spawns
+            if block.name in SPAWN_TOOLS:
                 subagent_type = block.input.get('subagent_type', 'unknown')
                 description = block.input.get('description', 'no description')
                 prompt = block.input.get('prompt', '')
