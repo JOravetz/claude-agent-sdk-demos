@@ -58,13 +58,16 @@ To have the report build on your own earlier work, list the directories that hol
 
 ## Output Structure
 
+Each run writes to its own folder, named with the same timestamp as its session log, so files from earlier runs never mix into a new report. Paths elsewhere in this README that start with `files/` are inside that folder.
+
 ```
 files/
-├── research_notes/     # Markdown files from researchers
-├── fact_check/         # verified_facts.md and ledger.md from the fact checker
-├── data/               # Data summaries from analyst
-├── charts/             # PNG visualizations
-└── reports/            # Final PDF reports
+└── YYYYMMDD_HHMMSS/
+    ├── research_notes/     # Markdown files from researchers
+    ├── fact_check/         # verified_facts.md and ledger.md from the fact checker
+    ├── data/               # Data summaries from analyst
+    ├── charts/             # PNG visualizations
+    └── reports/            # Final PDF reports
 
 logs/
 └── session_YYYYMMDD_HHMMSS/

@@ -1,8 +1,10 @@
 """Entry point for research agent using AgentDefinition for subagents."""
 
 import asyncio
+import dataclasses
 import json
 import os
+import re
 import shutil
 import subprocess
 from datetime import datetime
@@ -55,6 +57,39 @@ def load_prompt(filename: str) -> str:
     with open(prompt_path, "r", encoding="utf-8") as f:
         body = f.read().strip()
     return f"Today's date is {datetime.now().astimezone().date().isoformat()}.\n\n{body}"
+
+
+# Output subfolders every run gets, under its own folder in files/.
+RUN_SUBDIRS = ("research_notes", "fact_check", "data", "charts", "reports")
+
+
+def setup_run_dir(session_dir: Path) -> Path:
+    """Create this run's output folder, files/<session timestamp>/, with its subfolders.
+
+    With one shared files/ folder, notes, charts and fact sheets from earlier
+    runs sat beside the new ones, and agents read and embedded them: a
+    hurricane run's notes and charts were in place for a trading report.
+    """
+    run_dir = Path("files") / session_dir.name.removeprefix("session_")
+    for sub in RUN_SUBDIRS:
+        (run_dir / sub).mkdir(parents=True, exist_ok=True)
+    return run_dir
+
+
+def scope_to_run(text: str, run_dir: Path) -> str:
+    """Point every files/... path in a prompt or description at this run's folder."""
+    return re.sub(r"\bfiles/", f"{run_dir.as_posix()}/", text)
+
+
+def run_dir_section(run_dir: Path) -> str:
+    """Lead-prompt section naming this run's output folder."""
+    return (
+        "<output_folder>\n"
+        f"Every file this run writes or reads goes under {run_dir.as_posix()}/. Wherever any "
+        f"instruction, including a slash command, says files/, use {run_dir.as_posix()}/ instead, "
+        "and pass that folder to every subagent you spawn. Never read or reuse other folders in files/.\n"
+        "</output_folder>"
+    )
 
 
 def prior_studies_dirs() -> list[Path]:
@@ -150,13 +185,17 @@ async def chat():
 
     # Setup session directory and transcript
     transcript_file, session_dir = setup_session()
+    run_dir = setup_run_dir(session_dir)
 
     # Create transcript writer
     transcript = TranscriptWriter(transcript_file)
 
     # Load prompts
     studies_dirs = prior_studies_dirs()
-    lead_agent_prompt = f"{load_prompt('lead_agent.txt')}\n\n{prior_studies_section(studies_dirs)}"
+    lead_agent_prompt = scope_to_run(
+        f"{load_prompt('lead_agent.txt')}\n\n{run_dir_section(run_dir)}\n\n{prior_studies_section(studies_dirs)}",
+        run_dir,
+    )
     researcher_prompt = load_prompt("researcher.txt")
     fact_checker_prompt = load_prompt("fact_checker.txt")
     data_analyst_prompt = load_prompt("data_analyst.txt")
@@ -232,6 +271,15 @@ async def chat():
             model="sonnet"
         )
 
+    agents = {
+        name: dataclasses.replace(
+            agent,
+            description=scope_to_run(agent.description, run_dir),
+            prompt=scope_to_run(agent.prompt, run_dir),
+        )
+        for name, agent in agents.items()
+    }
+
     # Set up hooks for tracking
     hooks = {
         'PreToolUse': [
@@ -293,7 +341,8 @@ async def chat():
         transcript.write("\n\nGoodbye!\n")
         transcript.close()
         tracker.close()
-        print(f"\nSession logs saved to: {session_dir}")
+        print(f"\nRun output saved to: {run_dir}")
+        print(f"Session logs saved to: {session_dir}")
         print(f"  - Transcript: {transcript_file}")
         print(f"  - Tool calls: {session_dir / 'tool_calls.jsonl'}")
 
