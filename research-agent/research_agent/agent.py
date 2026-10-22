@@ -67,8 +67,8 @@ def setup_run_dir(session_dir: Path) -> Path:
     """Create this run's output folder, files/<session timestamp>/, with its subfolders.
 
     With one shared files/ folder, notes, charts and fact sheets from earlier
-    runs sat beside the new ones, and agents read and embedded them: a
-    hurricane run's notes and charts were in place for a trading report.
+    runs sat beside the new ones, and agents read and embedded them in a
+    report on an unrelated topic.
     """
     run_dir = Path("files") / session_dir.name.removeprefix("session_")
     for sub in RUN_SUBDIRS:
@@ -303,7 +303,12 @@ async def chat():
         allowed_tools=["Task"],
         agents=agents,
         hooks=hooks,
-        model="haiku"
+        model="haiku",
+        # The CLI also loads .claude/CLAUDE.md from every folder above cwd, so the
+        # user's own instructions for unrelated work steered the research (one run
+        # went looking for "prior studies" in a project the topic never named).
+        # The prompts above are the agent's only instructions.
+        env={"CLAUDE_CODE_DISABLE_CLAUDE_MDS": "1"},
     )
 
     print("\n" + "=" * 50)

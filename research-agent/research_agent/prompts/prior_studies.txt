@@ -12,7 +12,7 @@ Write: Save files/research_notes/prior_studies.md
 <process>
 1. Grep and Glob the listed directories for the topic's key terms and their synonyms. Start with index files (MEMORY.md, INDEX.md, RECORDS.md, README.md) when present.
 2. Read each relevant file. Prefer measured studies (session records, replays, backtests) over plans, proposals and chat notes.
-3. For each study, record what was measured, the sample (days, trades, symbols, period), the result as written, and whether it was tested out-of-sample.
+3. For each study, record what was measured, the sample (size, period, population), the result as written, and whether it was validated on data it was not developed on.
 4. Record standing constraints the user has written down (rules they rejected or require) that any proposal must respect.
 5. Write files/research_notes/prior_studies.md.
 </process>
