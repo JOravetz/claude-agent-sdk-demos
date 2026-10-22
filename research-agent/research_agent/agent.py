@@ -192,9 +192,11 @@ async def chat():
 
     # Load prompts
     studies_dirs = prior_studies_dirs()
-    lead_agent_prompt = scope_to_run(
-        f"{load_prompt('lead_agent.txt')}\n\n{run_dir_section(run_dir)}\n\n{prior_studies_section(studies_dirs)}",
-        run_dir,
+    # Scope the prompt file only: the run-folder section already names the run
+    # folder, and scoping it again nested the output (files/RUN/RUN/).
+    lead_agent_prompt = (
+        f"{scope_to_run(load_prompt('lead_agent.txt'), run_dir)}\n\n"
+        f"{run_dir_section(run_dir)}\n\n{prior_studies_section(studies_dirs)}"
     )
     researcher_prompt = load_prompt("researcher.txt")
     fact_checker_prompt = load_prompt("fact_checker.txt")
