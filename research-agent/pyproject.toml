@@ -8,6 +8,7 @@ dependencies = [
     "matplotlib>=3.11.2",
     "python-dotenv>=1.0.0",
     "reportlab>=5.0.1",
+    "seaborn>=0.13.2",
 ]
 
 [build-system]
