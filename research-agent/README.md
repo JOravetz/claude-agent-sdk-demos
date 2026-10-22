@@ -17,6 +17,8 @@ uv run python research_agent/agent.py
 
 Then ask: "Research quantum computing developments in 2025"
 
+To have the report build on your own earlier work, list the directories that hold it in `PRIOR_STUDIES_DIRS` (separated by `:`; see `.env.example`). A **Prior Studies** subagent then searches only those directories, alongside the web researchers. Without it, the agent never searches local files.
+
 ## How It Works
 
 1. **Lead Agent** breaks your request into 2-4 subtopics
@@ -32,6 +34,7 @@ Then ask: "Research quantum computing developments in 2025"
 |-------|-------|---------|
 | **Lead Agent** | `Task` | Coordinates research, delegates to subagents |
 | **Researcher** | `WebSearch`, `Write` | Gathers information from the web |
+| **Prior Studies** (optional) | `Glob`, `Grep`, `Read`, `Write` | Finds your own measured results in `PRIOR_STUDIES_DIRS` |
 | **Fact Checker** | `Glob`, `Read`, `WebFetch`, `WebSearch`, `Bash`, `Write` | Verifies findings against sources before they are used |
 | **Data Analyst** | `Glob`, `Read`, `Bash`, `Write` | Extracts metrics, generates charts |
 | **Report Writer** | `Skill`, `Write`, `Glob`, `Read`, `Bash` | Creates PDF reports with embedded visuals |

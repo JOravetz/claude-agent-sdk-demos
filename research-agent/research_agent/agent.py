@@ -57,6 +57,43 @@ def load_prompt(filename: str) -> str:
     return f"Today's date is {datetime.now().astimezone().date().isoformat()}.\n\n{body}"
 
 
+def prior_studies_dirs() -> list[Path]:
+    """Directories named in PRIOR_STUDIES_DIRS (os.pathsep-separated) that exist.
+
+    The lookup searches only these. Left to infer a location, the lead picked
+    the first project path it saw in the user's CLAUDE.md, which was the wrong
+    repository, and reported that no prior studies existed.
+    """
+    raw = os.environ.get("PRIOR_STUDIES_DIRS", "")
+    dirs = [Path(p).expanduser().resolve() for p in raw.split(os.pathsep) if p.strip()]
+    for d in dirs:
+        if not d.is_dir():
+            print(f"Warning: PRIOR_STUDIES_DIRS entry is not a directory, skipped: {d}")
+    return [d for d in dirs if d.is_dir()]
+
+
+def prior_studies_section(dirs: list[Path]) -> str:
+    """Lead-prompt section saying where prior studies live, or that none are configured."""
+    if not dirs:
+        return (
+            "<prior_studies>\n"
+            "No prior-studies location is configured. Do NOT search the local filesystem for "
+            "prior studies or the user's projects; research the web only.\n"
+            "</prior_studies>"
+        )
+    listed = "\n".join(f"- {d}" for d in dirs)
+    return (
+        "<prior_studies>\n"
+        "The user's own prior studies live ONLY in these directories:\n"
+        f"{listed}\n"
+        "When the topic concerns the user's own system or data, spawn ONE prior-studies subagent "
+        "in STEP 2, in parallel with the researchers, and pass it these directories verbatim. "
+        "Never search the local filesystem any other way, and never point a subagent at a "
+        "directory not listed here.\n"
+        "</prior_studies>"
+    )
+
+
 # How long to keep listening after the last background task finishes, for the
 # lead's follow-up turn to start.
 IDLE_GRACE_SECONDS = 10
@@ -118,7 +155,8 @@ async def chat():
     transcript = TranscriptWriter(transcript_file)
 
     # Load prompts
-    lead_agent_prompt = load_prompt("lead_agent.txt")
+    studies_dirs = prior_studies_dirs()
+    lead_agent_prompt = f"{load_prompt('lead_agent.txt')}\n\n{prior_studies_section(studies_dirs)}"
     researcher_prompt = load_prompt("researcher.txt")
     fact_checker_prompt = load_prompt("fact_checker.txt")
     data_analyst_prompt = load_prompt("data_analyst.txt")
@@ -179,6 +217,20 @@ async def chat():
             model="haiku"
         )
     }
+
+    if studies_dirs:
+        listed = "\n".join(f"- {d}" for d in studies_dirs)
+        agents["prior-studies"] = AgentDefinition(
+            description=(
+                "Use this agent, in parallel with the researchers, when the topic concerns the "
+                "user's own system or data. It searches ONLY the configured prior-studies "
+                "directories for the user's measured results and standing constraints, and writes "
+                "files/research_notes/prior_studies.md for the fact-checker and report-writer."
+            ),
+            tools=["Glob", "Grep", "Read", "Write"],
+            prompt=f"{load_prompt('prior_studies.txt')}\n\n<prior_studies_dirs>\n{listed}\n</prior_studies_dirs>",
+            model="sonnet"
+        )
 
     # Set up hooks for tracking
     hooks = {
