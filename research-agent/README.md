@@ -1,6 +1,6 @@
 # Multi-Agent Research System
 
-A multi-agent research system that coordinates specialized subagents to research any topic and generate comprehensive PDF reports with data visualizations.
+A multi-agent research system that coordinates specialized subagents to research any topic and generate comprehensive PDF and HTML reports with data visualizations.
 
 ## Quick Start
 
@@ -26,7 +26,7 @@ To have the report build on your own earlier work, list the directories that hol
 3. Each Researcher saves findings to `files/research_notes/`, with a source URL and as-of date on every figure
 4. Spawns **Fact Checker** to cross-check the notes, re-verify key figures against their sources, and write `files/fact_check/`
 5. Spawns **Data Analyst** to chart only verified facts in `files/charts/`
-6. Spawns **Report Writer** to create the final PDF report, with a verification section, in `files/reports/`
+6. Spawns **Report Writer** to write the report once as `files/reports/report.json`, then build a PDF and a matching HTML page from it, with a verification section, in `files/reports/`
 
 ## Agents
 
@@ -36,8 +36,8 @@ To have the report build on your own earlier work, list the directories that hol
 | **Researcher** | `WebSearch`, `Write` | Gathers information from the web |
 | **Prior Studies** (optional) | `Glob`, `Grep`, `Read`, `Write` | Finds your own measured results in `PRIOR_STUDIES_DIRS` |
 | **Fact Checker** | `Glob`, `Read`, `WebFetch`, `WebSearch`, `Bash`, `Write` | Verifies findings against sources before they are used |
-| **Data Analyst** | `Glob`, `Read`, `Bash`, `Write` | Extracts metrics, generates charts |
-| **Report Writer** | `Skill`, `Write`, `Glob`, `Read`, `Bash` | Creates PDF reports with embedded visuals |
+| **Data Analyst** | `Glob`, `Read`, `Bash`, `Write` | Extracts metrics, generates charts and their data (`files/data/charts.json`) |
+| **Report Writer** | `Skill`, `Write`, `Glob`, `Read`, `Bash` | Creates PDF and HTML reports with embedded visuals |
 
 ## Slash Commands
 
@@ -65,14 +65,20 @@ files/
 └── YYYYMMDD_HHMMSS/
     ├── research_notes/     # Markdown files from researchers
     ├── fact_check/         # verified_facts.md and ledger.md from the fact checker
-    ├── data/               # Data summaries from analyst
+    ├── data/               # Data summary and charts.json from the analyst
     ├── charts/             # PNG visualizations
-    └── reports/            # Final PDF reports
+    └── reports/            # report.json, and the PDF and HTML reports built from it
 
 logs/
 └── session_YYYYMMDD_HHMMSS/
     ├── transcript.txt      # Human-readable conversation
     └── tool_calls.jsonl    # Structured tool usage log
+```
+
+The HTML report opens in a dark theme; the button in its top bar switches to light, and the browser remembers the choice. Its charts are redrawn from `files/data/charts.json` with hover tooltips and a table of their numbers. It is one file, apart from the Archivo web font, which falls back to the system font offline. `research_agent/html_report.py` renders it; after editing `report.json`, rebuild it with:
+
+```bash
+uv run python research_agent/html_report.py files/<run>/reports/report.json files/<run>/reports/<name>.html --charts files/<run>/data/charts.json
 ```
 
 ## Subagent Tracking with Hooks

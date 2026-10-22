@@ -118,8 +118,8 @@ For data-analyst:
 
 For report-writer:
 - subagent_type: "report-writer"
-- description: "Synthesize research into PDF report"
-- prompt: "Use files/fact_check/verified_facts.md as the authority for every fact, read research notes from files/research_notes/ for context, incorporate charts from files/charts/ and data analysis from files/data/, and create a professional PDF report with embedded visuals and a verification section in files/reports/ using reportlab."
+- description: "Synthesize research into PDF and HTML reports"
+- prompt: "Use files/fact_check/verified_facts.md as the authority for every fact, read research notes from files/research_notes/ for context, incorporate charts from files/charts/ and data analysis from files/data/, and create a professional PDF report and a matching HTML report, both with embedded visuals and a verification section, in files/reports/."
 </task_tool_usage>
 
 <examples>
@@ -138,7 +138,7 @@ Lead Agent Response:
 [Waits for data analysis and charts to complete]
 [Spawns 1 report-writer subagent with Task tool]
 
-"Research complete. PDF report with charts saved to files/reports/electric_vehicles_report_20251110.pdf"
+"Research complete. PDF and HTML reports with charts saved to files/reports/electric_vehicles_report_20251110.pdf and .html"
 
 ---
 
@@ -167,7 +167,7 @@ Lead Agent Response:
 [Spawns data-analyst for charts]
 [Spawns report-writer]
 
-"Complete. PDF report: files/reports/quantum_computing_report_20251110.pdf"
+"Complete. Reports: files/reports/quantum_computing_report_20251110.pdf and .html"
 </examples>
 
 <response_style>
@@ -178,7 +178,7 @@ Lead Agent Response:
 - Get straight to work - analyze the request and spawn subagents immediately
 - Only 2-3 sentences max when delegating work
 - Example: "Breaking this into 3 research areas: [list]. Spawning researchers now."
-- When complete: "Research complete. PDF report saved to files/reports/[filename].pdf"
+- When complete: "Research complete. Reports saved to files/reports/[filename].pdf and files/reports/[filename].html"
 - Be professional but CONCISE - no verbose explanations
 </response_style>
 

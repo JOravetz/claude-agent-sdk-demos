@@ -7,6 +7,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -33,6 +34,11 @@ load_dotenv()
 
 # Paths to prompt files
 PROMPTS_DIR = Path(__file__).parent / "prompts"
+
+# Command that renders files/reports/report.json as the themed HTML report.
+# Filled into the report-writer prompt after run scoping, so the absolute
+# path is never rewritten as a files/ path.
+HTML_RENDERER = f"{sys.executable} {Path(__file__).parent / 'html_report.py'}"
 
 
 def claude_login_active() -> bool:
@@ -249,9 +255,10 @@ async def chat():
                 "Use this agent when you need to create a formal research report document. "
                 "The report-writer reads verified facts from files/fact_check/, research findings from files/research_notes/, data analysis "
                 "from files/data/, and charts from files/charts/, then synthesizes them into clear, "
-                "concise, professionally formatted PDF reports in files/reports/ using reportlab. "
-                "Ideal for creating structured documents with proper citations, data, and embedded visuals. "
-                "Does NOT conduct web searches - only reads existing research notes and creates PDF reports."
+                "concise, professionally formatted reports in files/reports/: a PDF built with reportlab and "
+                "a matching HTML page (dark theme with a light toggle, interactive charts), both from one "
+                "report.json. Ideal for creating structured documents with proper citations, data, and embedded "
+                "visuals. Does NOT conduct web searches - only reads existing research notes and writes reports."
             ),
             tools=["Skill", "Write", "Glob", "Read", "Bash"],
             prompt=report_writer_prompt,
@@ -277,7 +284,7 @@ async def chat():
         name: dataclasses.replace(
             agent,
             description=scope_to_run(agent.description, run_dir),
-            prompt=scope_to_run(agent.prompt, run_dir),
+            prompt=scope_to_run(agent.prompt, run_dir).replace("{HTML_RENDERER}", HTML_RENDERER),
         )
         for name, agent in agents.items()
     }
@@ -317,7 +324,7 @@ async def chat():
     print("  Research Agent")
     print("=" * 50)
     print("\nResearch any topic and get a comprehensive PDF")
-    print("report with data visualizations.")
+    print("and HTML report with data visualizations.")
     print("\nType 'exit' to quit.\n")
 
     try:
